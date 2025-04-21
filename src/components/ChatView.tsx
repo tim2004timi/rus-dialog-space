@@ -19,6 +19,13 @@ const ChatView = ({ chatId }: ChatViewProps) => {
   const [chatInfo, setChatInfo] = useState<Chat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Format timestamp for display
+  const formatMessageTime = (timestamp: string) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  };
+
   const fetchMessages = async () => {
     if (!chatId) return;
     
@@ -84,13 +91,6 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     }
   };
 
-  // Format timestamp for display
-  const formatMessageTime = (timestamp: string) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  };
-
   if (!chatId) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
@@ -130,6 +130,7 @@ const ChatView = ({ chatId }: ChatViewProps) => {
             <MessageBubble 
               key={message.id} 
               message={message} 
+              formatTime={formatMessageTime}
             />
           ))
         )}
@@ -158,9 +159,10 @@ const ChatView = ({ chatId }: ChatViewProps) => {
 
 interface MessageBubbleProps {
   message: Message;
+  formatTime: (timestamp: string) => string;
 }
 
-const MessageBubble = ({ message }: MessageBubbleProps) => {
+const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
   const isQuestion = message.message_type === 'question';
   
   return (
@@ -178,7 +180,7 @@ const MessageBubble = ({ message }: MessageBubbleProps) => {
         <p className="whitespace-pre-wrap break-words">{message.message}</p>
         <div className="text-right mt-1">
           <span className={`text-xs ${isQuestion ? 'text-gray-500' : 'text-gray-300'}`}>
-            {formatMessageTime(message.created_at)}
+            {formatTime(message.created_at)}
           </span>
         </div>
       </div>
