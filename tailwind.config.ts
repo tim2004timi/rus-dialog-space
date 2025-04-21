@@ -1,4 +1,3 @@
-
 import type { Config } from "tailwindcss";
 
 export default {
@@ -64,7 +63,7 @@ export default {
 					ring: 'hsl(var(--sidebar-ring))'
 				},
 				question: "#F1F1F1",
-				answer: "#333333",
+				answer: "#1F1F1F",
 				unread: "#1EAEDB",
 				aiHighlight: "#9b87f5"
 			},

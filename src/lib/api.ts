@@ -1,6 +1,6 @@
-
 import { toast } from '@/components/ui/sonner';
-import { setupMockData } from './db';
+
+export const API_URL = 'http://localhost:3001/api';
 
 // Types
 export interface Chat {
@@ -22,51 +22,35 @@ export interface Message {
   ai: boolean;
 }
 
-// In a real application, you would connect to your API endpoints
-// For now, we'll use mock data and simulate API calls
-
-let mockData: { chats: any[], messages: any[] } | null = null;
-
-const initMockData = async () => {
-  if (!mockData) {
-    mockData = await setupMockData() || { chats: [], messages: [] };
-  }
-  return mockData;
-};
-
-// Helper to simulate API request delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 // Get all chats
 export const getChats = async (): Promise<Chat[]> => {
   try {
-    await initMockData();
-    await delay(300); // Simulate network delay
-    
-    if (!mockData) {
-      throw new Error('Failed to load chat data');
+    const response = await fetch(`${API_URL}/chats`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch chats');
     }
+    const chats = await response.json();
     
-    const chatsList = [...mockData.chats];
+    // Get last message for each chat
+    const chatsWithLastMessage = await Promise.all(
+      chats.map(async (chat: any) => {
+        const messagesResponse = await fetch(`${API_URL}/chats/${chat.id}/messages`);
+        const messages = await messagesResponse.json();
+        const lastMessage = messages[messages.length - 1];
+        
+        return {
+          id: chat.id,
+          uuid: chat.uuid,
+          waiting: chat.waiting,
+          ai: chat.ai,
+          lastMessage: lastMessage?.message || '',
+          lastMessageTime: lastMessage?.created_at || new Date().toISOString(),
+          unread: false // This should be implemented based on your business logic
+        };
+      })
+    );
     
-    // Add last message to each chat
-    return chatsList.map((chat: any, index: number) => {
-      const chatMessages = mockData?.messages.filter(m => m.chat_id === index + 1) || [];
-      const lastMsg = chatMessages.length > 0 ? 
-        chatMessages[chatMessages.length - 1] : 
-        null;
-      
-      return {
-        id: index + 1,
-        uuid: chat.uuid,
-        waiting: chat.waiting,
-        ai: chat.ai,
-        lastMessage: lastMsg ? lastMsg.message : '',
-        lastMessageTime: lastMsg ? new Date().toISOString() : new Date().toISOString(),
-        unread: Math.random() > 0.5 // Randomly set some chats as unread for demo
-      };
-    }).sort((a, b) => {
-      // Sort by waiting first, then by lastMessageTime
+    return chatsWithLastMessage.sort((a, b) => {
       if (a.waiting && !b.waiting) return -1;
       if (!a.waiting && b.waiting) return 1;
       return new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime();
@@ -81,25 +65,19 @@ export const getChats = async (): Promise<Chat[]> => {
 // Get messages for a specific chat
 export const getChatMessages = async (chatId: number): Promise<Message[]> => {
   try {
-    await initMockData();
-    await delay(200);
-    
-    if (!mockData) {
-      throw new Error('Failed to load message data');
+    const response = await fetch(`${API_URL}/chats/${chatId}/messages`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch messages');
     }
-    
-    const messages = mockData.messages
-      .filter(msg => msg.chat_id === chatId)
-      .map((msg, index) => ({
-        id: index + 1,
-        chat_id: msg.chat_id,
-        created_at: new Date(Date.now() - Math.random() * 86400000).toISOString(), // Random time in the last 24h
-        message: msg.message,
-        message_type: msg.message_type,
-        ai: msg.ai
-      }));
-    
-    return messages;
+    const messages = await response.json();
+    return messages.map((msg: any) => ({
+      id: msg.id,
+      chat_id: msg.chat_id,
+      created_at: msg.created_at,
+      message: msg.message,
+      message_type: msg.message_type,
+      ai: msg.ai
+    }));
   } catch (error) {
     console.error('Error fetching messages:', error);
     toast.error('Не удалось загрузить сообщения');
@@ -110,32 +88,42 @@ export const getChatMessages = async (chatId: number): Promise<Message[]> => {
 // Send a new message
 export const sendMessage = async (chatId: number, message: string, isAi: boolean): Promise<Message> => {
   try {
-    await initMockData();
-    await delay(300);
+    const response = await fetch(`${API_URL}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message,
+        message_type: 'answer',
+        ai: isAi
+      }),
+    });
     
-    if (!mockData) {
+    if (!response.ok) {
       throw new Error('Failed to send message');
     }
     
-    const newMessage = {
-      id: mockData.messages.length + 1,
-      chat_id: chatId,
-      created_at: new Date().toISOString(),
-      message,
-      message_type: 'answer' as const,
-      ai: isAi
-    };
-    
-    // Add to our mock data
-    mockData.messages.push(newMessage);
+    const newMessage = await response.json();
     
     // Update chat waiting status
-    const chatIndex = mockData.chats.findIndex((c, idx) => idx + 1 === chatId);
-    if (chatIndex >= 0) {
-      mockData.chats[chatIndex].waiting = false;
-    }
+    await fetch(`${API_URL}/chats/${chatId}/waiting`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ waiting: false }),
+    });
     
-    return newMessage;
+    return {
+      id: newMessage.id,
+      chat_id: newMessage.chat_id,
+      created_at: newMessage.created_at,
+      message: newMessage.message,
+      message_type: newMessage.message_type,
+      ai: newMessage.ai
+    };
   } catch (error) {
     console.error('Error sending message:', error);
     toast.error('Не удалось отправить сообщение');
@@ -146,25 +134,31 @@ export const sendMessage = async (chatId: number, message: string, isAi: boolean
 // Toggle AI status for a chat
 export const toggleAiChat = async (chatId: number, aiEnabled: boolean): Promise<Chat> => {
   try {
-    await initMockData();
-    await delay(200);
+    console.log('Toggling AI status:', { chatId, aiEnabled });
     
-    if (!mockData) {
+    const response = await fetch(`${API_URL}/chats/${chatId}/ai`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ai: aiEnabled }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to update chat AI status:', errorData);
       throw new Error('Failed to update chat');
     }
     
-    const chatIndex = mockData.chats.findIndex((c, idx) => idx + 1 === chatId);
-    if (chatIndex >= 0) {
-      mockData.chats[chatIndex].ai = aiEnabled;
-      
-      return {
-        id: chatId,
-        uuid: mockData.chats[chatIndex].uuid,
-        waiting: mockData.chats[chatIndex].waiting,
-        ai: aiEnabled
-      };
-    }
-    throw new Error('Chat not found');
+    const chat = await response.json();
+    console.log('Chat AI status updated successfully:', chat);
+    
+    return {
+      id: chat.id,
+      uuid: chat.uuid,
+      waiting: chat.waiting,
+      ai: chat.ai
+    };
   } catch (error) {
     console.error('Error toggling AI status:', error);
     toast.error('Не удалось обновить статус ИИ');
@@ -174,27 +168,38 @@ export const toggleAiChat = async (chatId: number, aiEnabled: boolean): Promise<
 
 // Mark chat as read
 export const markChatAsRead = async (chatId: number): Promise<void> => {
-  // In a real application, you would make an API call to update the database
-  await delay(100);
-  // Since we're using mock data, we don't need to do anything here
-  // The UI will handle the visual updates
+  try {
+    console.log('Marking chat as read:', chatId);
+    
+    const response = await fetch(`${API_URL}/chats/${chatId}/waiting`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ waiting: false }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to update chat waiting status:', errorData);
+      throw new Error('Failed to update chat waiting status');
+    }
+    
+    const result = await response.json();
+    console.log('Chat marked as read successfully:', result);
+  } catch (error) {
+    console.error('Error marking chat as read:', error);
+  }
 };
 
 // Get chat statistics
 export const getChatStats = async (): Promise<{ total: number, pending: number, ai: number }> => {
   try {
-    await initMockData();
-    await delay(150);
-    
-    if (!mockData) {
-      throw new Error('Failed to load statistics');
+    const response = await fetch(`${API_URL}/stats`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch stats');
     }
-    
-    const total = mockData.chats.length;
-    const pending = mockData.chats.filter(c => c.waiting).length;
-    const ai = mockData.chats.filter(c => c.ai).length;
-    
-    return { total, pending, ai };
+    return await response.json();
   } catch (error) {
     console.error('Error fetching chat statistics:', error);
     return { total: 0, pending: 0, ai: 0 };

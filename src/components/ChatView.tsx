@@ -1,6 +1,5 @@
-
 import { useState, useEffect, useRef } from 'react';
-import { Message, Chat, getChatMessages, sendMessage, toggleAiChat, markChatAsRead } from '@/lib/api';
+import { Message, Chat, getChatMessages, sendMessage, toggleAiChat, markChatAsRead, API_URL } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -26,15 +25,36 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   };
 
+  const fetchChatInfo = async () => {
+    if (!chatId) return;
+    
+    try {
+      const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
+      if (chatResponse.ok) {
+        const chatData = await chatResponse.json();
+        console.log('Fetched chat info:', chatData);
+        setAiEnabled(chatData.ai);
+        setChatInfo(chatData);
+      }
+    } catch (error) {
+      console.error('Failed to fetch chat info:', error);
+    }
+  };
+
   const fetchMessages = async () => {
     if (!chatId) return;
     
     try {
       setLoading(true);
+      console.log('Fetching messages for chat:', chatId);
       const messagesData = await getChatMessages(chatId);
       setMessages(messagesData);
       
+      // Get chat info to set initial AI status
+      await fetchChatInfo();
+      
       // Mark chat as read when opened
+      console.log('Marking chat as read after fetching messages:', chatId);
       await markChatAsRead(chatId);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
@@ -82,12 +102,15 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     if (!chatId) return;
     
     try {
-      setAiEnabled(checked);
-      await toggleAiChat(chatId, checked);
+      console.log('Toggling AI status:', { chatId, checked });
+      const updatedChat = await toggleAiChat(chatId, checked);
+      console.log('AI status updated:', updatedChat);
+      setAiEnabled(updatedChat.ai);
       toast.success(checked ? 'ИИ включен для этого чата' : 'ИИ отключен для этого чата');
     } catch (error) {
       console.error('Failed to toggle AI status:', error);
-      setAiEnabled(!checked); // Revert UI state on error
+      // Revert UI state on error
+      await fetchChatInfo();
     }
   };
 
@@ -168,7 +191,7 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
   return (
     <div className={`mb-4 flex ${isQuestion ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
-        isQuestion ? 'bg-question text-gray-800' : 'bg-answer text-white'
+        isQuestion ? 'bg-question text-gray-800' : 'bg-[#1F1F1F] text-white'
       }`}>
         <div className="mb-1 flex items-center">
           {message.ai && (
