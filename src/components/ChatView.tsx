@@ -90,7 +90,27 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     if (!chatId || !newMessage.trim()) return;
     
     try {
-      await sendMessage(chatId, newMessage, aiEnabled);
+      // Send message to the API - always set ai=false for user messages
+      await sendMessage(chatId, newMessage, false);
+      
+      // Send message to the webhook if chatInfo is available
+      if (chatInfo && chatInfo.uuid) {
+        try {
+          await fetch('http://localhost:8000/webhook/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              chat_id: String(chatInfo.uuid),
+              answer: newMessage
+            }),
+          });
+        } catch (webhookError) {
+          console.error('Failed to send message to webhook:', webhookError);
+        }
+      }
+      
       setNewMessage('');
       fetchMessages();
     } catch (error) {
@@ -128,7 +148,7 @@ const ChatView = ({ chatId }: ChatViewProps) => {
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Chat Header */}
-      <div className="border-b border-gray-200 py-3 px-4 flex justify-between items-center">
+      <div className="border-b border-gray-300 py-3 px-4 flex justify-between items-center h-14">
         <div>
           <h2 className="text-lg font-medium text-gray-800">Чат #{chatId}</h2>
         </div>
@@ -167,7 +187,7 @@ const ChatView = ({ chatId }: ChatViewProps) => {
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Введите сообщение..."
-            className="flex-1"
+            className="flex-1 border-gray-300"
             autoComplete="off"
           />
           <Button type="submit" disabled={!newMessage.trim()}>
@@ -191,7 +211,7 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
   return (
     <div className={`mb-4 flex ${isQuestion ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
-        isQuestion ? 'bg-question text-gray-800' : 'bg-[#1F1F1F] text-white'
+        isQuestion ? 'bg-gray-300 text-gray-800' : 'bg-[#1F1F1F] text-white'
       }`}>
         <div className="mb-1 flex items-center">
           {message.ai && (

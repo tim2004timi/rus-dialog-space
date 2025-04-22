@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Chat, getChats } from '@/lib/api';
 import { CircleDot, MessageSquare } from 'lucide-react';
@@ -54,7 +53,7 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
             {/* Waiting Response Section */}
             {waitingChats.length > 0 && (
               <div>
-                <div className="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <div className="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
                   Ожидают ответа
                 </div>
                 
@@ -72,7 +71,7 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
             {/* Regular Chats Section */}
             <div>
               {waitingChats.length > 0 && (
-                <div className="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <div className="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
                   Все сообщения
                 </div>
               )}
@@ -122,7 +121,7 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
       onClick={onClick}
     >
       <div className="mr-3 flex-shrink-0 mt-1">
-        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
+        <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600">
           {chat.uuid.charAt(0).toUpperCase()}
         </div>
       </div>
@@ -143,12 +142,12 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
           </p>
           
           <div className="flex items-center ml-2">
-            {chat.unread && (
-              <CircleDot size={16} className="text-unread mr-1" />
+            {chat.waiting && (
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-1" />
             )}
             
             {chat.ai && (
-              <div className="text-xs px-1.5 py-0.5 bg-aiHighlight/10 text-aiHighlight rounded-sm">
+              <div className="text-xs px-1.5 py-0.5 bg-gray-300 text-aiHighlight rounded-sm">
                 ИИ
               </div>
             )}

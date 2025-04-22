@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { getChatStats } from '@/lib/api';
 import { MessageSquare, Send, CircleDot } from 'lucide-react';
@@ -34,7 +33,7 @@ const ChatStats = () => {
   }, []);
 
   return (
-    <div className="bg-white border-b border-gray-200 py-3 px-4 flex items-center">
+    <div className="bg-white border-b border-gray-300 py-3 px-4 flex items-center h-14">
       {loading ? (
         <div className="text-sm text-gray-500">Загрузка статистики...</div>
       ) : (

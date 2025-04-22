@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatView from '@/components/ChatView';
@@ -15,7 +14,7 @@ const Index = () => {
     <div className="h-screen flex flex-col">
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar (30% width) */}
-        <div className="w-full md:w-1/3 lg:w-3/10 flex flex-col border-r border-gray-200">
+        <div className="w-full md:w-1/3 lg:w-3/10 flex flex-col border-r border-gray-300">
           <ChatStats />
           <div className="flex-1 overflow-hidden">
             <ChatSidebar
@@ -26,7 +25,7 @@ const Index = () => {
         </div>
         
         {/* Main Content (70% width) */}
-        <div className="hidden md:block md:w-2/3 lg:w-7/10 flex-1">
+        <div className="hidden md:block md:w-2/3 lg:w-7/10 flex-1 border-l border-gray-200">
           <ChatView chatId={selectedChatId} />
         </div>
         
