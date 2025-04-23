@@ -22,7 +22,12 @@ const ChatView = ({ chatId }: ChatViewProps) => {
   const formatMessageTime = (timestamp: string) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('ru-RU', { 
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(',', '');
   };
 
   const fetchChatInfo = async () => {
@@ -48,7 +53,21 @@ const ChatView = ({ chatId }: ChatViewProps) => {
       setLoading(true);
       console.log('Fetching messages for chat:', chatId);
       const messagesData = await getChatMessages(chatId);
-      setMessages(messagesData);
+      
+      // Сортируем сообщения по времени и типу
+      const sortedMessages = messagesData.sort((a, b) => {
+        const timeA = new Date(a.created_at).getTime();
+        const timeB = new Date(b.created_at).getTime();
+        
+        // Если время одинаковое, вопрос должен быть выше ответа
+        if (timeA === timeB) {
+          return a.message_type === 'question' ? -1 : 1;
+        }
+        
+        return timeA - timeB;
+      });
+      
+      setMessages(sortedMessages);
       
       // Get chat info to set initial AI status
       await fetchChatInfo();
@@ -96,7 +115,7 @@ const ChatView = ({ chatId }: ChatViewProps) => {
       // Send message to the webhook if chatInfo is available
       if (chatInfo && chatInfo.uuid) {
         try {
-          await fetch('http://localhost:8000/webhook/messages', {
+          await fetch(`${API_URL}/webhook/messages`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -2,9 +2,14 @@ import express from 'express';
 import pkg from 'pg';
 const { Pool } = pkg;
 import cors from 'cors';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
-const port = 3001;
+const port = process.env.SERVER_PORT || 3001;
 
 // Middleware
 app.use(cors());
@@ -12,11 +17,11 @@ app.use(express.json());
 
 // Database configuration
 const pool = new Pool({
-    host: '82.202.143.118',
-    user: 'postgres',
-    password: 'XXxx112233445566',
-    database: 'mydb',
-    port: 5432,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT,
 });
 
 // Test database connection
@@ -161,6 +166,25 @@ app.get('/api/stats', async (req, res) => {
     } catch (err) {
         console.error('Error fetching stats:', err);
         res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+// Webhook proxy route
+app.post('/api/webhook/messages', async (req, res) => {
+    try {
+        const response = await fetch(process.env.WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(req.body),
+        });
+        
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (err) {
+        console.error('Error proxying webhook message:', err);
+        res.status(500).json({ error: 'Failed to proxy webhook message' });
     }
 });
 
