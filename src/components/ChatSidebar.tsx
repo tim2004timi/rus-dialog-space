@@ -24,13 +24,46 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
 
   useEffect(() => {
     fetchChats();
-    
-    // Set up auto-refresh every 5 seconds
-    const intervalId = setInterval(() => {
-      fetchChats();
-    }, 5000);
-    
-    return () => clearInterval(intervalId);
+
+    // WebSocket client
+    let ws = new WebSocket('ws://localhost:3002');
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'frontend' }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.chat && data.question) {
+          setChats((prevChats) => {
+            const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
+            let lastMessage = data.answer ? data.answer.message : data.question.message;
+            let lastMessageTime = data.answer ? data.answer.created_at : data.question.created_at;
+            let updatedChat = {
+              ...data.chat,
+              lastMessage,
+              lastMessageTime
+            };
+            if (idx !== -1) {
+              // Обновляем существующий чат
+              const newChats = [...prevChats];
+              newChats[idx] = { ...newChats[idx], ...updatedChat };
+              return newChats;
+            } else {
+              // Добавляем новый чат
+              return [updatedChat, ...prevChats];
+            }
+          });
+        }
+      } catch (e) {
+        console.error('WS message parse error', e);
+      }
+    };
+    ws.onerror = (e) => {
+      console.error('WebSocket error', e);
+    };
+    return () => {
+      ws && ws.close();
+    };
   }, []);
 
   // Group chats by waiting status

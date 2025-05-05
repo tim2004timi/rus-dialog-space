@@ -85,15 +85,75 @@ const ChatView = ({ chatId }: ChatViewProps) => {
   useEffect(() => {
     if (chatId) {
       fetchMessages();
-      
-      // Set up auto-refresh every 5 seconds
-      const intervalId = setInterval(() => {
-        fetchMessages();
-      }, 5000);
-      
-      return () => clearInterval(intervalId);
+
+      // WebSocket client
+      let ws;
+      let isMounted = true;
+      ws = new WebSocket('ws://localhost:3002');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'frontend' }));
+      };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.chat && data.question) {
+            // Проверяем, что это нужный чат
+            if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
+              // Обновляем сообщения
+              let newMessages = [];
+              if (data.answer) {
+                newMessages = [
+                  {
+                    id: data.question.id,
+                    chat_id: data.chat.id,
+                    created_at: data.question.created_at,
+                    message: data.question.message,
+                    message_type: 'question',
+                    ai: false
+                  },
+                  {
+                    id: data.answer.id,
+                    chat_id: data.chat.id,
+                    created_at: data.answer.created_at,
+                    message: data.answer.message,
+                    message_type: 'answer',
+                    ai: !!data.answer.ai
+                  }
+                ];
+              } else {
+                newMessages = [
+                  {
+                    id: data.question.id,
+                    chat_id: data.chat.id,
+                    created_at: data.question.created_at,
+                    message: data.question.message,
+                    message_type: 'question',
+                    ai: false
+                  }
+                ];
+              }
+              setMessages((prev) => {
+                // Заменяем последние сообщения этого чата
+                const filtered = prev.filter(m => m.chat_id !== data.chat.id);
+                return [...filtered, ...newMessages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+              });
+              setAiEnabled(data.chat.ai);
+              setChatInfo((prev) => prev ? { ...prev, ai: data.chat.ai, waiting: data.chat.waiting } : data.chat);
+            }
+          }
+        } catch (e) {
+          console.error('WS message parse error', e);
+        }
+      };
+      ws.onerror = (e) => {
+        console.error('WebSocket error', e);
+      };
+      return () => {
+        isMounted = false;
+        ws && ws.close();
+      };
     }
-  }, [chatId]);
+  }, [chatId, chatInfo?.uuid]);
 
   useEffect(() => {
     scrollToBottom();
@@ -105,33 +165,16 @@ const ChatView = ({ chatId }: ChatViewProps) => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!chatId || !newMessage.trim()) return;
-    
     try {
-      // Send message to the API - always set ai=false for user messages
-      await sendMessage(chatId, newMessage, false);
-      
-      // Send message to the webhook if chatInfo is available
-      if (chatInfo && chatInfo.uuid) {
-        try {
-          await fetch(`${API_URL}/webhook/messages`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              chat_id: String(chatInfo.uuid),
-              answer: newMessage
-            }),
-          });
-        } catch (webhookError) {
-          console.error('Failed to send message to webhook:', webhookError);
-        }
-      }
-      
+      // Отправляем по WebSocket
+      const ws = new WebSocket('ws://localhost:3002');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'frontend' }));
+        ws.send(JSON.stringify({ chat_id: chatInfo?.uuid, message: newMessage }));
+        ws.close();
+      };
       setNewMessage('');
-      fetchMessages();
     } catch (error) {
       console.error('Failed to send message:', error);
     }

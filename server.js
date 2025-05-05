@@ -4,6 +4,7 @@ const { Pool } = pkg;
 import cors from 'cors';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import { WebSocketServer } from 'ws';
 
 // Load environment variables
 dotenv.config();
@@ -187,6 +188,55 @@ app.post('/api/webhook/messages', async (req, res) => {
         res.status(500).json({ error: 'Failed to proxy webhook message' });
     }
 });
+
+// WebSocket server setup
+const wss = new WebSocketServer({ port: 3002 });
+
+// Храним подключения фронтов и бота
+let frontendClients = [];
+let botClient = null;
+
+wss.on('connection', (ws, req) => {
+    // Определяем тип клиента по первому сообщению
+    ws.once('message', (msg) => {
+        let parsed;
+        try {
+            parsed = JSON.parse(msg);
+        } catch {
+            ws.close();
+            return;
+        }
+        if (parsed.type === 'bot') {
+            botClient = ws;
+            ws.on('message', (data) => {
+                // Бот прислал новое сообщение для фронта
+                frontendClients.forEach(client => {
+                    if (client.readyState === 1) {
+                        client.send(data);
+                    }
+                });
+            });
+            ws.on('close', () => {
+                botClient = null;
+            });
+        } else if (parsed.type === 'frontend') {
+            frontendClients.push(ws);
+            ws.on('message', (data) => {
+                // Фронт отправил сообщение для бота (например, от менеджера)
+                if (botClient && botClient.readyState === 1) {
+                    botClient.send(data);
+                }
+            });
+            ws.on('close', () => {
+                frontendClients = frontendClients.filter(c => c !== ws);
+            });
+        } else {
+            ws.close();
+        }
+    });
+});
+
+console.log('WebSocket server running at ws://localhost:3002');
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
