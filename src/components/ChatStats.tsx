@@ -24,12 +24,28 @@ const ChatStats = () => {
   useEffect(() => {
     fetchStats();
     
-    // Set up auto-refresh every 5 seconds
-    const intervalId = setInterval(() => {
-      fetchStats();
-    }, 5000);
-    
-    return () => clearInterval(intervalId);
+    // WebSocket client
+    let ws = new WebSocket('ws://localhost:3002');
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'frontend' }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.chat) {
+          // When we receive a chat update, refresh the stats
+          fetchStats();
+        }
+      } catch (e) {
+        console.error('WS message parse error', e);
+      }
+    };
+    ws.onerror = (e) => {
+      console.error('WebSocket error', e);
+    };
+    return () => {
+      ws && ws.close();
+    };
   }, []);
 
   return (
