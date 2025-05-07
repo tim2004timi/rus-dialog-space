@@ -34,12 +34,27 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     if (!chatId) return;
     
     try {
+      // First try to get chat by ID
       const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
       if (chatResponse.ok) {
         const chatData = await chatResponse.json();
         console.log('Fetched chat info:', chatData);
         setAiEnabled(chatData.ai);
         setChatInfo(chatData);
+      } else {
+        // If not found by ID, try to get chat by UUID
+        const chatsResponse = await fetch(`${API_URL}/chats`);
+        if (chatsResponse.ok) {
+          const chats = await chatsResponse.json();
+          const chat = chats.find((c: Chat) => 
+            c.id === Number(chatId) || c.uuid === String(chatId)
+          );
+          if (chat) {
+            console.log('Found chat by UUID:', chat);
+            setAiEnabled(chat.ai);
+            setChatInfo(chat);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch chat info:', error);
@@ -52,29 +67,48 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     try {
       setLoading(true);
       console.log('Fetching messages for chat:', chatId);
-      const messagesData = await getChatMessages(chatId);
       
-      // Сортируем сообщения по времени и типу
-      const sortedMessages = messagesData.sort((a, b) => {
-        const timeA = new Date(a.created_at).getTime();
-        const timeB = new Date(b.created_at).getTime();
-        
-        // Если время одинаковое, вопрос должен быть выше ответа
-        if (timeA === timeB) {
-          return a.message_type === 'question' ? -1 : 1;
+      // First try to get messages by ID
+      let messagesData;
+      try {
+        messagesData = await getChatMessages(chatId);
+      } catch (error) {
+        // If failed, try to get chat by UUID first
+        const chatsResponse = await fetch(`${API_URL}/chats`);
+        if (chatsResponse.ok) {
+          const chats = await chatsResponse.json();
+          const chat = chats.find((c: Chat) => 
+            c.id === Number(chatId) || c.uuid === String(chatId)
+          );
+          if (chat) {
+            messagesData = await getChatMessages(chat.id);
+          }
         }
+      }
+      
+      if (messagesData) {
+        // Сортируем сообщения по времени и типу
+        const sortedMessages = messagesData.sort((a, b) => {
+          const timeA = new Date(a.created_at).getTime();
+          const timeB = new Date(b.created_at).getTime();
+          
+          // Если время одинаковое, вопрос должен быть выше ответа
+          if (timeA === timeB) {
+            return a.message_type === 'question' ? -1 : 1;
+          }
+          
+          return timeA - timeB;
+        });
         
-        return timeA - timeB;
-      });
-      
-      setMessages(sortedMessages);
-      
-      // Get chat info to set initial AI status
-      await fetchChatInfo();
-      
-      // Mark chat as read when opened
-      console.log('Marking chat as read after fetching messages:', chatId);
-      await markChatAsRead(chatId);
+        setMessages(sortedMessages);
+        
+        // Get chat info to set initial AI status
+        await fetchChatInfo();
+        
+        // Mark chat as read when opened
+        console.log('Marking chat as read after fetching messages:', chatId);
+        await markChatAsRead(chatId);
+      }
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     } finally {
@@ -160,18 +194,20 @@ const ChatView = ({ chatId }: ChatViewProps) => {
             // Update chat status in database
             await markChatAsRead(chatId);
             
-            // Update local state
+            // Update local state immediately
             setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
             
             // Send WebSocket message to update other components
-            ws.send(JSON.stringify({ 
-              type: 'status_update',
-              chat: { 
-                id: chatId,
-                uuid: chatInfo?.uuid,
-                waiting: false
-              }
-            }));
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ 
+                type: 'status_update',
+                chat: { 
+                  id: chatId,
+                  uuid: chatInfo?.uuid,
+                  waiting: false
+                }
+              }));
+            }
           } catch (error) {
             console.error('Failed to update chat status:', error);
           }
