@@ -152,9 +152,36 @@ const ChatView = ({ chatId }: ChatViewProps) => {
       ws.onerror = (e) => {
         console.error('WebSocket error', e);
       };
+
+      // Add 5-second interval to update chat status
+      const statusInterval = setInterval(async () => {
+        if (isMounted && chatId) {
+          try {
+            // Update chat status in database
+            await markChatAsRead(chatId);
+            
+            // Update local state
+            setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
+            
+            // Send WebSocket message to update other components
+            ws.send(JSON.stringify({ 
+              type: 'status_update',
+              chat: { 
+                id: chatId,
+                uuid: chatInfo?.uuid,
+                waiting: false
+              }
+            }));
+          } catch (error) {
+            console.error('Failed to update chat status:', error);
+          }
+        }
+      }, 5000);
+
       return () => {
         isMounted = false;
         ws && ws.close();
+        clearInterval(statusInterval);
       };
     }
   }, [chatId, chatInfo?.uuid]);
@@ -171,16 +198,27 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     e.preventDefault();
     if (!chatId || !newMessage.trim()) return;
     try {
-      // Отправляем по WebSocket
+      // Save message to database
+      const savedMessage = await sendMessage(chatId, newMessage, false);
+      
+      // Update messages list
+      setMessages(prev => [...prev, savedMessage]);
+      
+      // Update chat info
+      setChatInfo(prev => prev ? { ...prev, waiting: true } : null);
+      
+      // Send to WebSocket for Telegram bot
       const ws = new WebSocket('ws://localhost:3002');
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'frontend' }));
         ws.send(JSON.stringify({ chat_id: chatInfo?.uuid, message: newMessage }));
         ws.close();
       };
+      
       setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);
+      toast.error('Не удалось отправить сообщение');
     }
   };
 

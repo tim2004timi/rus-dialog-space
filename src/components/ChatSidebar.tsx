@@ -37,7 +37,18 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
           ? JSON.parse(await event.data.text())
           : JSON.parse(event.data);
           
-        if (data.chat && data.question) {
+        if (data.type === 'status_update' && data.chat) {
+          // Update chat status
+          setChats(prevChats => {
+            const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
+            if (idx !== -1) {
+              const newChats = [...prevChats];
+              newChats[idx] = { ...newChats[idx], waiting: data.chat.waiting };
+              return newChats;
+            }
+            return prevChats;
+          });
+        } else if (data.chat && data.question) {
           setChats((prevChats) => {
             const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
             let lastMessage = data.answer ? data.answer.message : data.question.message;
