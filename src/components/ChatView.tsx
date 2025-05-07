@@ -93,9 +93,13 @@ const ChatView = ({ chatId }: ChatViewProps) => {
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'frontend' }));
       };
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
-          const data = JSON.parse(event.data);
+          // Convert Blob to text if needed
+          const data = event.data instanceof Blob 
+            ? JSON.parse(await event.data.text())
+            : JSON.parse(event.data);
+            
           if (data.chat && data.question) {
             // Проверяем, что это нужный чат
             if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
