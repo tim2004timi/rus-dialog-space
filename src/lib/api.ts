@@ -35,9 +35,9 @@ export const getChats = async (): Promise<Chat[]> => {
     // Get last message for each chat
     const chatsWithLastMessage = await Promise.all(
       chats.map(async (chat: any) => {
-        const messagesResponse = await fetch(`${API_URL}/chats/${chat.id}/messages`);
-        const messages = await messagesResponse.json();
-        const lastMessage = messages[messages.length - 1];
+        // Get only the last message
+        const messagesResponse = await fetch(`${API_URL}/chats/${chat.id}/messages/last`);
+        const lastMessage = await messagesResponse.json();
         
         return {
           id: chat.id,
@@ -46,7 +46,7 @@ export const getChats = async (): Promise<Chat[]> => {
           ai: chat.ai,
           lastMessage: lastMessage?.message || '',
           lastMessageTime: lastMessage?.created_at || new Date().toISOString(),
-          unread: false // This should be implemented based on your business logic
+          unread: false
         };
       })
     );
@@ -153,6 +153,22 @@ export const toggleAiChat = async (chatId: number, aiEnabled: boolean): Promise<
     
     const chat = await response.json();
     console.log('Chat AI status updated successfully:', chat);
+    
+    // Send WebSocket update
+    const ws = new WebSocket('ws://localhost:3002');
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'frontend' }));
+      ws.send(JSON.stringify({ 
+        type: 'ai_status_update',
+        chat: {
+          id: chat.id,
+          uuid: chat.uuid,
+          ai: chat.ai,
+          waiting: chat.waiting
+        }
+      }));
+      ws.close();
+    };
     
     return {
       id: chat.id,

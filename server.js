@@ -238,6 +238,19 @@ wss.on('connection', (ws, req) => {
 
 console.log('WebSocket server running at ws://localhost:3002');
 
+app.get('/api/chats/:id/messages/last', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 1',
+            [req.params.id]
+        );
+        res.json(result.rows[0] || null);
+    } catch (err) {
+        console.error('Error fetching last message:', err);
+        res.status(500).json({ error: 'Failed to fetch last message' });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 }); 

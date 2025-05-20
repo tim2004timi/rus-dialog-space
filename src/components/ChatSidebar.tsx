@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Chat, getChats } from '@/lib/api';
 import { CircleDot, MessageSquare } from 'lucide-react';
+import { wsManager } from '@/lib/websocket';
 
 interface ChatSidebarProps {
   onSelectChat: (chatId: number) => void;
@@ -13,71 +14,124 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
 
   const fetchChats = async () => {
     try {
+      console.log('[ChatSidebar] Fetching chats');
       const chatData = await getChats();
+      console.log('[ChatSidebar] Received chats:', {
+        count: chatData.length,
+        chats: chatData.map(c => ({ id: c.id, uuid: c.uuid, ai: c.ai, waiting: c.waiting }))
+      });
       setChats(chatData);
     } catch (error) {
-      console.error('Failed to fetch chats:', error);
+      console.error('[ChatSidebar] Failed to fetch chats:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('[ChatSidebar] Initializing chat sidebar');
     fetchChats();
 
-    // WebSocket client
-    let ws = new WebSocket('ws://localhost:3002');
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'frontend' }));
-    };
-    ws.onmessage = async (event) => {
-      try {
-        // Convert Blob to text if needed
-        const data = event.data instanceof Blob 
-          ? JSON.parse(await event.data.text())
-          : JSON.parse(event.data);
-          
-        if (data.type === 'status_update' && data.chat) {
-          // Update chat status
-          setChats(prevChats => {
-            const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
-            if (idx !== -1) {
-              const newChats = [...prevChats];
-              newChats[idx] = { ...newChats[idx], waiting: data.chat.waiting };
-              return newChats;
-            }
-            return prevChats;
-          });
-        } else if (data.chat && data.question) {
-          setChats((prevChats) => {
-            const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
-            let lastMessage = data.answer ? data.answer.message : data.question.message;
-            let lastMessageTime = data.answer ? data.answer.created_at : data.question.created_at;
-            let updatedChat = {
-              ...data.chat,
-              lastMessage,
-              lastMessageTime
+    // Subscribe to WebSocket messages
+    const unsubscribe = wsManager.subscribe((data) => {
+      console.log('[ChatSidebar] Received WebSocket message:', {
+        type: data.type,
+        chatId: data.chat?.id,
+        chatUuid: data.chat?.uuid,
+        messageType: data.question?.message_type
+      });
+      
+      if (data.type === 'status_update' && data.chat) {
+        console.log('[ChatSidebar] Updating chat status:', {
+          chatId: data.chat.id,
+          chatUuid: data.chat.uuid,
+          waiting: data.chat.waiting
+        });
+        setChats(prevChats => {
+          const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
+          if (idx !== -1) {
+            const newChats = [...prevChats];
+            newChats[idx] = { ...newChats[idx], waiting: data.chat.waiting };
+            console.log('[ChatSidebar] Updated chat in list:', {
+              chatId: newChats[idx].id,
+              chatUuid: newChats[idx].uuid,
+              waiting: newChats[idx].waiting
+            });
+            return newChats;
+          }
+          return prevChats;
+        });
+      } else if (data.type === 'ai_status_update' && data.chat) {
+        console.log('[ChatSidebar] Updating chat AI status:', {
+          chatId: data.chat.id,
+          chatUuid: data.chat.uuid,
+          ai: data.chat.ai,
+          waiting: data.chat.waiting
+        });
+        setChats(prevChats => {
+          const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
+          if (idx !== -1) {
+            const newChats = [...prevChats];
+            newChats[idx] = { 
+              ...newChats[idx], 
+              ai: data.chat.ai,
+              waiting: data.chat.waiting 
             };
-            if (idx !== -1) {
-              // Обновляем существующий чат
-              const newChats = [...prevChats];
-              newChats[idx] = { ...newChats[idx], ...updatedChat };
-              return newChats;
-            } else {
-              // Добавляем новый чат
-              return [updatedChat, ...prevChats];
-            }
-          });
-        }
-      } catch (e) {
-        console.error('WS message parse error', e);
+            console.log('[ChatSidebar] Updated chat in list:', {
+              chatId: newChats[idx].id,
+              chatUuid: newChats[idx].uuid,
+              ai: newChats[idx].ai,
+              waiting: newChats[idx].waiting
+            });
+            return newChats;
+          }
+          return prevChats;
+        });
+      } else if (data.chat && data.question) {
+        console.log('[ChatSidebar] Updating chat with new message:', {
+          chatId: data.chat.id,
+          chatUuid: data.chat.uuid,
+          messageType: data.question.message_type,
+          hasAnswer: !!data.answer
+        });
+        setChats((prevChats) => {
+          const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
+          let lastMessage = data.answer ? data.answer.message : data.question.message;
+          let lastMessageTime = data.answer ? data.answer.created_at : data.question.created_at;
+          let updatedChat = {
+            ...data.chat,
+            lastMessage,
+            lastMessageTime
+          };
+          
+          if (idx !== -1) {
+            // Обновляем существующий чат
+            const newChats = [...prevChats];
+            newChats[idx] = { ...newChats[idx], ...updatedChat };
+            console.log('[ChatSidebar] Updated existing chat:', {
+              chatId: newChats[idx].id,
+              chatUuid: newChats[idx].uuid,
+              lastMessage: newChats[idx].lastMessage,
+              lastMessageTime: newChats[idx].lastMessageTime
+            });
+            return newChats;
+          } else {
+            // Добавляем новый чат
+            console.log('[ChatSidebar] Adding new chat:', {
+              chatId: updatedChat.id,
+              chatUuid: updatedChat.uuid,
+              lastMessage: updatedChat.lastMessage,
+              lastMessageTime: updatedChat.lastMessageTime
+            });
+            return [updatedChat, ...prevChats];
+          }
+        });
       }
-    };
-    ws.onerror = (e) => {
-      console.error('WebSocket error', e);
-    };
+    });
+
     return () => {
-      ws && ws.close();
+      console.log('[ChatSidebar] Cleaning up chat sidebar');
+      unsubscribe();
     };
   }, []);
 

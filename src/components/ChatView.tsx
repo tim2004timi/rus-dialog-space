@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Send } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
+import { wsManager } from '@/lib/websocket';
 
 interface ChatViewProps {
   chatId: number | null;
@@ -118,106 +119,108 @@ const ChatView = ({ chatId }: ChatViewProps) => {
 
   useEffect(() => {
     if (chatId) {
+      console.log('[ChatView] Initializing chat view for chatId:', chatId);
       fetchMessages();
 
-      // WebSocket client
-      let ws;
-      let isMounted = true;
-      ws = new WebSocket('ws://localhost:3002');
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'frontend' }));
-      };
-      ws.onmessage = async (event) => {
-        try {
-          // Convert Blob to text if needed
-          const data = event.data instanceof Blob 
-            ? JSON.parse(await event.data.text())
-            : JSON.parse(event.data);
-            
-          if (data.chat && data.question) {
-            // Проверяем, что это нужный чат
-            if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
-              // Обновляем сообщения
-              let newMessages = [];
-              if (data.answer) {
-                newMessages = [
-                  {
-                    id: data.question.id,
-                    chat_id: data.chat.id,
-                    created_at: data.question.created_at,
-                    message: data.question.message,
-                    message_type: 'question',
-                    ai: false
-                  },
-                  {
-                    id: data.answer.id,
-                    chat_id: data.chat.id,
-                    created_at: data.answer.created_at,
-                    message: data.answer.message,
-                    message_type: 'answer',
-                    ai: !!data.answer.ai
-                  }
-                ];
-              } else {
-                newMessages = [
-                  {
-                    id: data.question.id,
-                    chat_id: data.chat.id,
-                    created_at: data.question.created_at,
-                    message: data.question.message,
-                    message_type: 'question',
-                    ai: false
-                  }
-                ];
-              }
-              setMessages((prev) => {
-                // Заменяем последние сообщения этого чата
-                const filtered = prev.filter(m => m.chat_id !== data.chat.id);
-                return [...filtered, ...newMessages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-              });
-              setAiEnabled(data.chat.ai);
-              setChatInfo((prev) => prev ? { ...prev, ai: data.chat.ai, waiting: data.chat.waiting } : data.chat);
-            }
-          }
-        } catch (e) {
-          console.error('WS message parse error', e);
-        }
-      };
-      ws.onerror = (e) => {
-        console.error('WebSocket error', e);
-      };
+      // Subscribe to WebSocket messages
+      const unsubscribe = wsManager.subscribe((data) => {
+        console.log('[ChatView] Received WebSocket message:', {
+          type: data.type,
+          chatId: data.chat?.id,
+          chatUuid: data.chat?.uuid,
+          currentChatId: chatId,
+          currentChatUuid: chatInfo?.uuid,
+          rawData: data
+        });
 
-      // Add 5-second interval to update chat status
-      const statusInterval = setInterval(async () => {
-        if (isMounted && chatId) {
-          try {
-            // Update chat status in database
-            await markChatAsRead(chatId);
-            
-            // Update local state immediately
-            setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
-            
-            // Send WebSocket message to update other components
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ 
-                type: 'status_update',
-                chat: { 
-                  id: chatId,
-                  uuid: chatInfo?.uuid,
-                  waiting: false
+        if (data.type === 'ai_status_update' && data.chat) {
+          console.log('[ChatView] Processing AI status update:', {
+            chatId: data.chat.id,
+            chatUuid: data.chat.uuid,
+            ai: data.chat.ai,
+            currentChatId: chatId
+          });
+          
+          if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
+            console.log('[ChatView] Updating AI status for current chat');
+            setAiEnabled(data.chat.ai);
+            setChatInfo(prev => prev ? { ...prev, ai: data.chat.ai } : data.chat);
+          }
+        } else if (data.chat && data.question) {
+          // Проверяем, что это нужный чат
+          if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
+            console.log('[ChatView] Updating chat with new message:', {
+              chatId: data.chat.id,
+              messageType: data.question.message_type,
+              aiStatus: data.chat.ai,
+              waitingStatus: data.chat.waiting
+            });
+
+            // Обновляем сообщения
+            let newMessages = [];
+            if (data.answer) {
+              newMessages = [
+                {
+                  id: data.question.id,
+                  chat_id: data.chat.id,
+                  created_at: data.question.created_at,
+                  message: data.question.message,
+                  message_type: 'question',
+                  ai: false
+                },
+                {
+                  id: data.answer.id,
+                  chat_id: data.chat.id,
+                  created_at: data.answer.created_at,
+                  message: data.answer.message,
+                  message_type: 'answer',
+                  ai: !!data.answer.ai
                 }
-              }));
+              ];
+            } else {
+              newMessages = [
+                {
+                  id: data.question.id,
+                  chat_id: data.chat.id,
+                  created_at: data.question.created_at,
+                  message: data.question.message,
+                  message_type: 'question',
+                  ai: false
+                }
+              ];
             }
-          } catch (error) {
-            console.error('Failed to update chat status:', error);
+
+            setMessages((prev) => {
+              const filtered = prev.filter(m => m.chat_id !== data.chat.id);
+              const updated = [...filtered, ...newMessages].sort((a, b) => 
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+              console.log('[ChatView] Updated messages:', {
+                previousCount: prev.length,
+                newCount: updated.length,
+                newMessagesCount: newMessages.length
+              });
+              return updated;
+            });
+
+            setAiEnabled(data.chat.ai);
+            setChatInfo((prev) => {
+              const updated = prev ? { ...prev, ai: data.chat.ai, waiting: data.chat.waiting } : data.chat;
+              console.log('[ChatView] Updated chat info:', {
+                previousAi: prev?.ai,
+                newAi: updated.ai,
+                previousWaiting: prev?.waiting,
+                newWaiting: updated.waiting
+              });
+              return updated;
+            });
           }
         }
-      }, 5000);
+      });
 
       return () => {
-        isMounted = false;
-        ws && ws.close();
-        clearInterval(statusInterval);
+        console.log('[ChatView] Cleaning up chat view for chatId:', chatId);
+        unsubscribe();
       };
     }
   }, [chatId, chatInfo?.uuid]);
@@ -262,13 +265,41 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     if (!chatId) return;
     
     try {
-      console.log('Toggling AI status:', { chatId, checked });
+      console.log('[ChatView] Toggling AI status:', { chatId, checked, currentAiStatus: aiEnabled });
       const updatedChat = await toggleAiChat(chatId, checked);
-      console.log('AI status updated:', updatedChat);
+      console.log('[ChatView] AI status updated from server:', updatedChat);
+      
+      // Update local state immediately
       setAiEnabled(updatedChat.ai);
+      setChatInfo(prev => prev ? { ...prev, ai: updatedChat.ai } : updatedChat);
+      
+      // Send WebSocket update
+      const wsMessage = { 
+        type: 'ai_status_update',
+        chat: {
+          id: updatedChat.id,
+          uuid: updatedChat.uuid,
+          ai: updatedChat.ai,
+          waiting: updatedChat.waiting
+        }
+      };
+      console.log('[ChatView] Sending WebSocket update:', wsMessage);
+      wsManager.send(wsMessage);
+      
+      // Force update chat list
+      const chatsResponse = await fetch(`${API_URL}/chats`);
+      if (chatsResponse.ok) {
+        const chats = await chatsResponse.json();
+        const updatedChatData = chats.find((c: Chat) => c.id === chatId || c.uuid === String(chatId));
+        if (updatedChatData) {
+          console.log('[ChatView] Updated chat data from server:', updatedChatData);
+          setChatInfo(updatedChatData);
+        }
+      }
+      
       toast.success(checked ? 'ИИ включен для этого чата' : 'ИИ отключен для этого чата');
     } catch (error) {
-      console.error('Failed to toggle AI status:', error);
+      console.error('[ChatView] Failed to toggle AI status:', error);
       // Revert UI state on error
       await fetchChatInfo();
     }
