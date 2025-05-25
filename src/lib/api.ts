@@ -31,6 +31,7 @@ export const getChats = async (): Promise<Chat[]> => {
       throw new Error('Failed to fetch chats');
     }
     const chats = await response.json();
+    console.log('Raw backend chats:', chats);
     
     // Get last message for each chat
     const chatsWithLastMessage = await Promise.all(
@@ -38,8 +39,7 @@ export const getChats = async (): Promise<Chat[]> => {
         const messagesResponse = await fetch(`${API_URL}/chats/${chat.id}/messages`);
         const messages = await messagesResponse.json();
         const lastMessage = messages[messages.length - 1];
-        
-        return {
+        const mappedChat = {
           id: chat.id,
           uuid: chat.uuid,
           waiting: chat.waiting,
@@ -48,8 +48,11 @@ export const getChats = async (): Promise<Chat[]> => {
           lastMessageTime: lastMessage?.created_at || new Date().toISOString(),
           unread: false // This should be implemented based on your business logic
         };
+        console.log('Mapped chat:', mappedChat);
+        return mappedChat;
       })
     );
+    console.log('Mapped chatsWithLastMessage:', chatsWithLastMessage);
     
     return chatsWithLastMessage.sort((a, b) => {
       if (a.waiting && !b.waiting) return -1;
@@ -204,5 +207,24 @@ export const getChatStats = async (): Promise<{ total: number, pending: number, 
   } catch (error) {
     console.error('Error fetching chat statistics:', error);
     return { total: 0, pending: 0, ai: 0 };
+  }
+};
+
+// Delete a chat
+export const deleteChat = async (chatId: number | string): Promise<void> => {
+  try {
+    const response = await fetch(`${API_URL}/chats/${chatId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to delete chat:', errorData);
+      throw new Error('Failed to delete chat');
+    }
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    toast.error('Не удалось удалить чат');
+    throw error;
   }
 };

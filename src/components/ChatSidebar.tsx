@@ -5,15 +5,20 @@ import { CircleDot, MessageSquare } from 'lucide-react';
 interface ChatSidebarProps {
   onSelectChat: (chatId: number) => void;
   selectedChatId: number | null;
+  validChatIds?: number[];
 }
 
-const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
+const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebarProps) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Log chats every render
+  console.log('Rendering sidebar with chats:', chats);
 
   const fetchChats = async () => {
     try {
       const chatData = await getChats();
+      console.log('Fetched chats from backend:', chatData);
       setChats(chatData);
     } catch (error) {
       console.error('Failed to fetch chats:', error);
@@ -24,7 +29,6 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
 
   useEffect(() => {
     fetchChats();
-
     // WebSocket client
     let ws = new WebSocket('ws://localhost:3002');
     ws.onopen = () => {
@@ -36,19 +40,16 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
         const data = event.data instanceof Blob 
           ? JSON.parse(await event.data.text())
           : JSON.parse(event.data);
-          
-        if (data.type === 'status_update' && data.chat) {
-          // Update chat status
-          setChats(prevChats => {
-            const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
-            if (idx !== -1) {
-              const newChats = [...prevChats];
-              newChats[idx] = { ...newChats[idx], waiting: data.chat.waiting };
-              return newChats;
-            }
-            return prevChats;
-          });
+        if (
+          data.type === 'status_update' ||
+          data.type === 'chat_deleted' ||
+          data.type === 'stats_update'
+        ) {
+          // Refetch the chat list from the backend
+          fetchChats();
         } else if (data.chat && data.question) {
+          // Refetch chats when a new message is received
+          fetchChats();
           setChats((prevChats) => {
             const idx = prevChats.findIndex(c => c.id === data.chat.id || c.uuid === data.chat.uuid);
             let lastMessage = data.answer ? data.answer.message : data.question.message;
@@ -81,9 +82,13 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
     };
   }, []);
 
-  // Group chats by waiting status
-  const waitingChats = chats.filter(chat => chat.waiting);
-  const regularChats = chats.filter(chat => !chat.waiting);
+  // Only render chats with valid id and in validChatIds
+  let validChats = chats.filter(chat => typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined);
+  if (validChatIds) {
+    validChats = validChats.filter(chat => validChatIds.includes(chat.id));
+  }
+  const waitingChats = validChats.filter(chat => chat.waiting);
+  const regularChats = validChats.filter(chat => !chat.waiting);
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
@@ -110,7 +115,10 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
                     key={chat.id} 
                     chat={chat} 
                     isSelected={selectedChatId === chat.id} 
-                    onClick={() => onSelectChat(chat.id)} 
+                    onClick={() => {
+                      console.log('Sidebar selecting chat:', chat);
+                      onSelectChat(chat.id);
+                    }} 
                   />
                 ))}
               </div>
@@ -129,7 +137,10 @@ const ChatSidebar = ({ onSelectChat, selectedChatId }: ChatSidebarProps) => {
                   key={chat.id} 
                   chat={chat} 
                   isSelected={selectedChatId === chat.id} 
-                  onClick={() => onSelectChat(chat.id)} 
+                  onClick={() => {
+                    console.log('Sidebar selecting chat:', chat);
+                    onSelectChat(chat.id);
+                  }} 
                 />
               ))}
             </div>
@@ -151,6 +162,7 @@ interface ChatPreviewProps {
 }
 
 const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
+  console.log('Rendering ChatPreview for chat:', chat);
   const truncateMessage = (message: string, maxLength: number = 30) => {
     if (!message) return 'Нет сообщений';
     return message.length > maxLength ? message.substring(0, maxLength) + '...' : message;

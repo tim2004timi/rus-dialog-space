@@ -36,8 +36,8 @@ const ChatStats = () => {
           ? JSON.parse(await event.data.text())
           : JSON.parse(event.data);
           
-        if (data.type === 'status_update' || data.chat) {
-          // When we receive a chat update or status update, refresh the stats
+        if (data.type === 'status_update' || data.type === 'stats_update' || data.chat) {
+          // When we receive a chat update, status update, or stats update, refresh the stats
           fetchStats();
         }
       } catch (e) {

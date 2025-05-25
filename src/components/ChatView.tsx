@@ -1,21 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
-import { Message, Chat, getChatMessages, sendMessage, toggleAiChat, markChatAsRead, API_URL } from '@/lib/api';
+import { Message, Chat, getChatMessages, sendMessage, toggleAiChat, markChatAsRead, deleteChat, API_URL } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Send } from 'lucide-react';
+import { Send, Trash2 } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ChatViewProps {
   chatId: number | null;
+  onChatDeleted?: () => void;
 }
 
-const ChatView = ({ chatId }: ChatViewProps) => {
+const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [chatInfo, setChatInfo] = useState<Chat | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Format timestamp for display
@@ -32,16 +45,21 @@ const ChatView = ({ chatId }: ChatViewProps) => {
 
   const fetchChatInfo = async () => {
     if (!chatId) return;
-    
+    setError(null);
     try {
       // First try to get chat by ID
       const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
       if (chatResponse.ok) {
         const chatData = await chatResponse.json();
-        console.log('Fetched chat info:', chatData);
         setAiEnabled(chatData.ai);
         setChatInfo(chatData);
       } else {
+        if (chatResponse.status === 400 || chatResponse.status === 404) {
+          setError('Чат не найден или недоступен.');
+          setChatInfo(null);
+          setMessages([]);
+          return;
+        }
         // If not found by ID, try to get chat by UUID
         const chatsResponse = await fetch(`${API_URL}/chats`);
         if (chatsResponse.ok) {
@@ -50,42 +68,59 @@ const ChatView = ({ chatId }: ChatViewProps) => {
             c.id === Number(chatId) || c.uuid === String(chatId)
           );
           if (chat) {
-            console.log('Found chat by UUID:', chat);
             setAiEnabled(chat.ai);
             setChatInfo(chat);
+          } else {
+            setError('Чат не найден или недоступен.');
+            setChatInfo(null);
+            setMessages([]);
           }
         }
       }
     } catch (error) {
-      console.error('Failed to fetch chat info:', error);
+      setError('Ошибка при загрузке чата.');
+      setChatInfo(null);
+      setMessages([]);
+      console.error('Failed to fetch chat info:', error, 'chatId:', chatId);
     }
   };
 
   const fetchMessages = async () => {
     if (!chatId) return;
-    
+    setError(null);
     try {
       setLoading(true);
-      console.log('Fetching messages for chat:', chatId);
-      
-      // First try to get messages by ID
       let messagesData;
-      try {
-        messagesData = await getChatMessages(chatId);
-      } catch (error) {
-        // If failed, try to get chat by UUID first
+      let chatData;
+      // First try to get chat by ID
+      const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
+      if (chatResponse.ok) {
+        chatData = await chatResponse.json();
+        messagesData = await getChatMessages(chatData.id);
+      } else {
+        if (chatResponse.status === 400 || chatResponse.status === 404) {
+          setError('Чат не найден или недоступен.');
+          setChatInfo(null);
+          setMessages([]);
+          return;
+        }
+        // If not found by ID, try to get chat by UUID
         const chatsResponse = await fetch(`${API_URL}/chats`);
         if (chatsResponse.ok) {
           const chats = await chatsResponse.json();
-          const chat = chats.find((c: Chat) => 
+          chatData = chats.find((c: Chat) => 
             c.id === Number(chatId) || c.uuid === String(chatId)
           );
-          if (chat) {
-            messagesData = await getChatMessages(chat.id);
+          if (chatData) {
+            messagesData = await getChatMessages(chatData.id);
+          } else {
+            setError('Чат не найден или недоступен.');
+            setChatInfo(null);
+            setMessages([]);
+            return;
           }
         }
       }
-      
       if (messagesData) {
         // Сортируем сообщения по времени и типу
         const sortedMessages = messagesData.sort((a, b) => {
@@ -102,15 +137,21 @@ const ChatView = ({ chatId }: ChatViewProps) => {
         
         setMessages(sortedMessages);
         
-        // Get chat info to set initial AI status
-        await fetchChatInfo();
+        // Update chat info
+        if (chatData) {
+          setAiEnabled(chatData.ai);
+          setChatInfo(chatData);
+        }
         
         // Mark chat as read when opened
         console.log('Marking chat as read after fetching messages:', chatId);
         await markChatAsRead(chatId);
       }
     } catch (error) {
-      console.error('Failed to fetch messages:', error);
+      setError('Ошибка при загрузке сообщений.');
+      setChatInfo(null);
+      setMessages([]);
+      console.error('Failed to fetch messages:', error, 'chatId:', chatId);
     } finally {
       setLoading(false);
     }
@@ -126,6 +167,20 @@ const ChatView = ({ chatId }: ChatViewProps) => {
       ws = new WebSocket('ws://localhost:3002');
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'frontend' }));
+        // Immediately mark as read and broadcast status_update
+        (async () => {
+          await markChatAsRead(chatId);
+          setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
+          const statusUpdate = {
+            type: 'status_update',
+            chat: {
+              id: chatId,
+              uuid: chatInfo?.uuid,
+              waiting: false
+            }
+          };
+          ws.send(JSON.stringify(statusUpdate));
+        })();
       };
       ws.onmessage = async (event) => {
         try {
@@ -134,7 +189,12 @@ const ChatView = ({ chatId }: ChatViewProps) => {
             ? JSON.parse(await event.data.text())
             : JSON.parse(event.data);
             
-          if (data.chat && data.question) {
+          if (data.type === 'status_update' && data.chat) {
+            // Update chat status
+            if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
+              setChatInfo(prev => prev ? { ...prev, waiting: data.chat.waiting } : null);
+            }
+          } else if (data.chat && data.question) {
             // Проверяем, что это нужный чат
             if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
               // Обновляем сообщения
@@ -171,9 +231,17 @@ const ChatView = ({ chatId }: ChatViewProps) => {
                 ];
               }
               setMessages((prev) => {
-                // Заменяем последние сообщения этого чата
-                const filtered = prev.filter(m => m.chat_id !== data.chat.id);
-                return [...filtered, ...newMessages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                // Добавляем новые сообщения к существующим
+                const updatedMessages = [...prev, ...newMessages];
+                // Сортируем по времени
+                return updatedMessages.sort((a, b) => {
+                  const timeA = new Date(a.created_at).getTime();
+                  const timeB = new Date(b.created_at).getTime();
+                  if (timeA === timeB) {
+                    return a.message_type === 'question' ? -1 : 1;
+                  }
+                  return timeA - timeB;
+                });
               });
               setAiEnabled(data.chat.ai);
               setChatInfo((prev) => prev ? { ...prev, ai: data.chat.ai, waiting: data.chat.waiting } : data.chat);
@@ -199,14 +267,15 @@ const ChatView = ({ chatId }: ChatViewProps) => {
             
             // Send WebSocket message to update other components
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ 
+              const statusUpdate = { 
                 type: 'status_update',
                 chat: { 
                   id: chatId,
                   uuid: chatInfo?.uuid,
                   waiting: false
                 }
-              }));
+              };
+              ws.send(JSON.stringify(statusUpdate));
             }
           } catch (error) {
             console.error('Failed to update chat status:', error);
@@ -274,12 +343,37 @@ const ChatView = ({ chatId }: ChatViewProps) => {
     }
   };
 
+  const handleDeleteChat = async () => {
+    if (!chatId) return;
+    
+    try {
+      await deleteChat(chatId);
+      toast.success('Чат успешно удален');
+      if (onChatDeleted) {
+        onChatDeleted();
+      }
+    } catch (error) {
+      console.error('Failed to delete chat:', error);
+    }
+  };
+
   if (!chatId) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
         <div className="text-center p-6">
           <h3 className="text-xl font-medium text-gray-600 mb-2">Выберите чат</h3>
           <p className="text-gray-500">Выберите чат из списка слева чтобы начать общение</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50">
+        <div className="text-center p-6">
+          <h3 className="text-xl font-medium text-red-600 mb-2">{error}</h3>
+          <p className="text-gray-500">Попробуйте выбрать другой чат или обновить страницу.</p>
         </div>
       </div>
     );
@@ -292,9 +386,19 @@ const ChatView = ({ chatId }: ChatViewProps) => {
         <div>
           <h2 className="text-lg font-medium text-gray-800">Чат #{chatId}</h2>
         </div>
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600">ИИ</span>
-          <Switch checked={aiEnabled} onCheckedChange={handleAiToggle} />
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">ИИ</span>
+            <Switch checked={aiEnabled} onCheckedChange={handleAiToggle} />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => setShowDeleteDialog(true)}
+          >
+            <Trash2 size={18} />
+          </Button>
         </div>
       </div>
       
@@ -336,6 +440,27 @@ const ChatView = ({ chatId }: ChatViewProps) => {
           </Button>
         </form>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить чат?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Это навсегда удалит чат и все его сообщения.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteChat}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

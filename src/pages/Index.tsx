@@ -1,13 +1,48 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatView from '@/components/ChatView';
 import ChatStats from '@/components/ChatStats';
+import { getChats } from '@/lib/api';
 
 const Index = () => {
-  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const [selectedChatId, setSelectedChatIdRaw] = useState<number | null>(null);
+  const [chatIds, setChatIds] = useState<number[]>([]);
+  const selectedChatIdRef = useRef<number | null>(null);
+
+  // Wrapper to log every selection and update ref
+  const setSelectedChatId = (id: number | null) => {
+    if (id !== null && !chatIds.includes(id)) {
+      console.warn('Attempted to set invalid selectedChatId:', id, 'Valid chatIds:', chatIds, new Error().stack);
+      return;
+    }
+    console.log('Setting selectedChatId:', id);
+    setSelectedChatIdRaw(id);
+    selectedChatIdRef.current = id;
+  };
+
+  // Fetch chat list and update chatIds
+  const fetchAndSyncChats = async () => {
+    const chats = await getChats();
+    const ids = chats.map(chat => chat.id);
+    setChatIds(ids);
+    console.log('Fetched chat IDs:', ids, 'Current selectedChatId:', selectedChatIdRef.current);
+    // If selectedChatId is not in the new list, just clear it
+    if (selectedChatIdRef.current !== null && !ids.includes(selectedChatIdRef.current)) {
+      setSelectedChatId(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchAndSyncChats();
+  }, []);
 
   const handleSelectChat = (chatId: number) => {
     setSelectedChatId(chatId);
+  };
+
+  const handleChatDeleted = () => {
+    setSelectedChatId(null);
+    fetchAndSyncChats();
   };
 
   return (
@@ -20,13 +55,17 @@ const Index = () => {
             <ChatSidebar
               onSelectChat={handleSelectChat}
               selectedChatId={selectedChatId}
+              validChatIds={chatIds}
             />
           </div>
         </div>
         
         {/* Main Content (70% width) */}
         <div className="hidden md:block md:w-2/3 lg:w-7/10 flex-1 border-l border-gray-200">
-          <ChatView chatId={selectedChatId} />
+          <ChatView 
+            chatId={selectedChatId} 
+            onChatDeleted={handleChatDeleted}
+          />
         </div>
         
         {/* Mobile view - Show chat when selected */}
@@ -42,7 +81,10 @@ const Index = () => {
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                <ChatView chatId={selectedChatId} />
+                <ChatView 
+                  chatId={selectedChatId} 
+                  onChatDeleted={handleChatDeleted}
+                />
               </div>
             </div>
           </div>

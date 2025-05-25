@@ -5,6 +5,7 @@ import cors from 'cors';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import { WebSocketServer } from 'ws';
+import WebSocket from 'ws';
 
 // Load environment variables
 dotenv.config();
@@ -35,6 +36,11 @@ pool.connect((err, client, release) => {
     }
 });
 
+// Defensive check helper
+function isValidId(id) {
+  return id !== undefined && id !== null && id !== '' && id !== 'null' && id !== 'undefined';
+}
+
 // API Routes
 app.get('/api/chats', async (req, res) => {
     try {
@@ -47,6 +53,10 @@ app.get('/api/chats', async (req, res) => {
 });
 
 app.get('/api/chats/:id/messages', async (req, res) => {
+    if (!isValidId(req.params.id)) {
+        console.error('Invalid chat id for messages:', req.params.id);
+        return res.status(400).json({ error: 'Invalid chat id' });
+    }
     try {
         const result = await pool.query(
             'SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC',
@@ -74,6 +84,10 @@ app.post('/api/chats', async (req, res) => {
 });
 
 app.post('/api/messages', async (req, res) => {
+    if (!isValidId(req.body.chat_id)) {
+        console.error('Invalid chat_id for new message:', req.body.chat_id);
+        return res.status(400).json({ error: 'Invalid chat_id' });
+    }
     try {
         const { chat_id, message, message_type, ai } = req.body;
         const result = await pool.query(
@@ -88,11 +102,25 @@ app.post('/api/messages', async (req, res) => {
 });
 
 app.get('/api/chats/:id', async (req, res) => {
+    if (!isValidId(req.params.id)) {
+        console.error('Invalid chat id for get chat:', req.params.id);
+        return res.status(400).json({ error: 'Invalid chat id' });
+    }
     try {
-        const result = await pool.query(
+        // Try to find chat by ID first
+        let result = await pool.query(
             'SELECT * FROM chats WHERE id = $1',
             [req.params.id]
         );
+        
+        // If not found by ID, try UUID
+        if (result.rows.length === 0) {
+            result = await pool.query(
+                'SELECT * FROM chats WHERE uuid = $1',
+                [req.params.id]
+            );
+        }
+        
         if (result.rows.length === 0) {
             res.status(404).json({ error: 'Chat not found' });
             return;
@@ -109,15 +137,24 @@ app.put('/api/chats/:id/waiting', async (req, res) => {
         const { waiting } = req.body;
         console.log('Updating chat waiting status:', { id: req.params.id, waiting });
         
-        const result = await pool.query(
+        // Try to find chat by ID first
+        let result = await pool.query(
             'UPDATE chats SET waiting = $1 WHERE id = $2 RETURNING *',
             [waiting, req.params.id]
         );
         
+        // If not found by ID, try UUID
+        if (result.rows.length === 0) {
+            result = await pool.query(
+                'UPDATE chats SET waiting = $1 WHERE uuid = $2 RETURNING *',
+                [waiting, req.params.id]
+            );
+        }
+        
         console.log('Update result:', result.rows[0]);
         
         if (result.rows.length === 0) {
-            console.log('No chat found with id:', req.params.id);
+            console.log('No chat found with id/uuid:', req.params.id);
             res.status(404).json({ error: 'Chat not found' });
             return;
         }
@@ -148,6 +185,11 @@ app.put('/api/chats/:id/ai', async (req, res) => {
         }
         
         res.json(result.rows[0]);
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({ type: 'stats_update' }));
+            }
+        });
     } catch (err) {
         console.error('Error updating chat AI status:', err);
         res.status(500).json({ error: 'Failed to update chat' });
@@ -237,6 +279,69 @@ wss.on('connection', (ws, req) => {
 });
 
 console.log('WebSocket server running at ws://localhost:3002');
+
+// Delete chat
+app.delete('/api/chats/:id', async (req, res) => {
+  const chatId = req.params.id;
+  
+  try {
+    // First try to delete by ID
+    const result = await pool.query(
+      'DELETE FROM chats WHERE id = $1 RETURNING id',
+      [chatId]
+    );
+    
+    if (result.rows.length === 0) {
+      // If not found by ID, try to delete by UUID
+      const uuidResult = await pool.query(
+        'DELETE FROM chats WHERE uuid = $1 RETURNING id',
+        [chatId]
+      );
+      
+      if (uuidResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No chat found with the provided ID or UUID' });
+      }
+      
+      // Delete associated messages
+      await pool.query('DELETE FROM messages WHERE chat_id = $1', [uuidResult.rows[0].id]);
+      
+      // Broadcast chat deletion to all connected clients
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'chat_deleted',
+            chatId: uuidResult.rows[0].id
+          }));
+        }
+      });
+      
+      res.json({ message: 'Chat deleted successfully' });
+    } else {
+      // Delete associated messages
+      await pool.query('DELETE FROM messages WHERE chat_id = $1', [result.rows[0].id]);
+      
+      // Broadcast chat deletion to all connected clients
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'chat_deleted',
+            chatId: result.rows[0].id
+          }));
+        }
+      });
+      
+      res.json({ message: 'Chat deleted successfully' });
+    }
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'stats_update' }));
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    res.status(500).json({ error: 'Failed to delete chat' });
+  }
+});
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
