@@ -40,8 +40,17 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
         const data = event.data instanceof Blob 
           ? JSON.parse(await event.data.text())
           : JSON.parse(event.data);
-        if (
-          data.type === 'status_update' ||
+        
+        if (data.type === 'status_update') {
+          // Update chat status in the local state
+          setChats(prevChats => 
+            prevChats.map(chat => 
+              chat.id === data.chatId 
+                ? { ...chat, waiting: data.waiting }
+                : chat
+            )
+          );
+        } else if (
           data.type === 'chat_deleted' ||
           data.type === 'stats_update'
         ) {

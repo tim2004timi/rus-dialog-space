@@ -343,6 +343,56 @@ app.delete('/api/chats/:id', async (req, res) => {
   }
 });
 
+// Add WebSocket message handling for chat read status
+wss.on('connection', (ws) => {
+  console.log('New WebSocket connection');
+  
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message);
+      
+      if (data.type === 'frontend') {
+        ws.isFrontend = true;
+        return;
+      }
+      
+      if (data.type === 'mark_chat_read' && data.chatId) {
+        // Update chat status in database
+        await pool.query(
+          'UPDATE chats SET waiting = false WHERE id = $1',
+          [data.chatId]
+        );
+        
+        // Broadcast the status update to all frontend clients
+        wss.clients.forEach((client) => {
+          if (client.isFrontend && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'status_update',
+              chatId: data.chatId,
+              waiting: false
+            }));
+          }
+        });
+        
+        // Also broadcast updated stats
+        const stats = await getStats();
+        wss.clients.forEach((client) => {
+          if (client.isFrontend && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'stats_update',
+              stats
+            }));
+          }
+        });
+      }
+      
+      // ... rest of existing WebSocket message handling ...
+    } catch (error) {
+      console.error('WebSocket message error:', error);
+    }
+  });
+});
+
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 }); 

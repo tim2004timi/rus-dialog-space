@@ -11,6 +11,7 @@ const Index = () => {
 
   // Wrapper to log every selection and update ref
   const setSelectedChatId = (id: number | null) => {
+    console.log('handleSelectChat called with:', id);
     if (id !== null && !chatIds.includes(id)) {
       console.warn('Attempted to set invalid selectedChatId:', id, 'Valid chatIds:', chatIds, new Error().stack);
       return;
@@ -37,13 +38,77 @@ const Index = () => {
   }, []);
 
   const handleSelectChat = (chatId: number) => {
-    setSelectedChatId(chatId);
+    console.log('handleSelectChat called with:', chatId);
+    if (chatId !== null && !chatIds.includes(chatId)) {
+      console.warn('Attempted to set invalid selectedChatId:', chatId, 'Valid chatIds:', chatIds, new Error().stack);
+      return;
+    }
+    console.log('Setting selectedChatId:', chatId);
+    setSelectedChatIdRaw(chatId);
+    selectedChatIdRef.current = chatId;
   };
 
   const handleChatDeleted = () => {
     setSelectedChatId(null);
     fetchAndSyncChats();
   };
+
+  // Add WebSocket connection for chat read status
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const connectWebSocket = () => {
+      ws = new WebSocket('ws://localhost:3002');
+      
+      ws.onopen = () => {
+        ws?.send(JSON.stringify({ type: 'frontend' }));
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+        // Try to reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
+      };
+    };
+
+    connectWebSocket();
+
+    // Set up interval to send read status
+    const startReadStatusInterval = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+
+      intervalId = setInterval(() => {
+        const currentChatId = selectedChatIdRef.current;
+        if (currentChatId !== null && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'mark_chat_read',
+            chatId: currentChatId
+          }));
+        }
+      }, 3000);
+    };
+
+    // Start interval when a chat is selected
+    if (selectedChatId !== null) {
+      startReadStatusInterval();
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [selectedChatId]);
 
   return (
     <div className="h-screen flex flex-col">
