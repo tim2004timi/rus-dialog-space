@@ -25,10 +25,12 @@ const Index = () => {
   const fetchAndSyncChats = async () => {
     const chats = await getChats();
     const ids = chats.map(chat => chat.id);
+    console.log('Updating chatIds:', ids);
     setChatIds(ids);
-    console.log('Fetched chat IDs:', ids, 'Current selectedChatId:', selectedChatIdRef.current);
+    
     // If selectedChatId is not in the new list, just clear it
     if (selectedChatIdRef.current !== null && !ids.includes(selectedChatIdRef.current)) {
+      console.log('Selected chat not in new list, clearing selection');
       setSelectedChatId(null);
     }
   };
@@ -37,23 +39,7 @@ const Index = () => {
     fetchAndSyncChats();
   }, []);
 
-  const handleSelectChat = (chatId: number) => {
-    console.log('handleSelectChat called with:', chatId);
-    if (chatId !== null && !chatIds.includes(chatId)) {
-      console.warn('Attempted to set invalid selectedChatId:', chatId, 'Valid chatIds:', chatIds, new Error().stack);
-      return;
-    }
-    console.log('Setting selectedChatId:', chatId);
-    setSelectedChatIdRaw(chatId);
-    selectedChatIdRef.current = chatId;
-  };
-
-  const handleChatDeleted = () => {
-    setSelectedChatId(null);
-    fetchAndSyncChats();
-  };
-
-  // Add WebSocket connection for chat read status
+  // Add WebSocket connection for chat read status and updates
   useEffect(() => {
     let ws: WebSocket | null = null;
     let intervalId: NodeJS.Timeout | null = null;
@@ -73,6 +59,22 @@ const Index = () => {
         console.log('WebSocket connection closed');
         // Try to reconnect after 5 seconds
         setTimeout(connectWebSocket, 5000);
+      };
+
+      ws.onmessage = async (event) => {
+        try {
+          // Convert Blob to text if needed
+          const data = event.data instanceof Blob 
+            ? JSON.parse(await event.data.text())
+            : JSON.parse(event.data);
+          
+          if (data.chat) {
+            // Refetch chats when a new chat is received
+            await fetchAndSyncChats();
+          }
+        } catch (e) {
+          console.error('WebSocket message parse error:', e);
+        }
       };
     };
 
@@ -109,6 +111,28 @@ const Index = () => {
       }
     };
   }, [selectedChatId]);
+
+  const handleSelectChat = async (chatId: number) => {
+    console.log('handleSelectChat called with:', chatId, 'Current chatIds:', chatIds);
+    
+    // Always fetch latest chats before selection
+    await fetchAndSyncChats();
+    
+    // Now check if the chat is valid with the latest data
+    if (chatId !== null && !chatIds.includes(chatId)) {
+      console.warn('Chat not found after refresh:', chatId, 'Valid chatIds:', chatIds);
+      return;
+    }
+    
+    console.log('Setting selectedChatId:', chatId);
+    setSelectedChatIdRaw(chatId);
+    selectedChatIdRef.current = chatId;
+  };
+
+  const handleChatDeleted = () => {
+    setSelectedChatId(null);
+    fetchAndSyncChats();
+  };
 
   return (
     <div className="h-screen flex flex-col">

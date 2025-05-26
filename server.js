@@ -343,7 +343,24 @@ app.delete('/api/chats/:id', async (req, res) => {
   }
 });
 
-// Add WebSocket message handling for chat read status
+// Add getStats function
+async function getStats() {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE waiting = true) as pending,
+        COUNT(*) FILTER (WHERE ai = true) as ai
+      FROM chats
+    `);
+    return result.rows[0];
+  } catch (err) {
+    console.error('Error fetching stats:', err);
+    return { total: 0, pending: 0, ai: 0 };
+  }
+}
+
+// Fix WebSocket message handling
 wss.on('connection', (ws) => {
   console.log('New WebSocket connection');
   
@@ -363,7 +380,10 @@ wss.on('connection', (ws) => {
           [data.chatId]
         );
         
-        // Broadcast the status update to all frontend clients
+        // Get updated stats
+        const stats = await getStats();
+        
+        // Broadcast the status update and stats to all frontend clients
         wss.clients.forEach((client) => {
           if (client.isFrontend && client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
@@ -371,13 +391,6 @@ wss.on('connection', (ws) => {
               chatId: data.chatId,
               waiting: false
             }));
-          }
-        });
-        
-        // Also broadcast updated stats
-        const stats = await getStats();
-        wss.clients.forEach((client) => {
-          if (client.isFrontend && client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
               type: 'stats_update',
               stats
@@ -385,8 +398,6 @@ wss.on('connection', (ws) => {
           }
         });
       }
-      
-      // ... rest of existing WebSocket message handling ...
     } catch (error) {
       console.error('WebSocket message error:', error);
     }
