@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 interface ChatViewProps {
   chatId: number | null;
@@ -30,6 +31,9 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { lastMessage, sendMessage: wsSendMessage } = useWebSocket();
+
+  console.log('ChatView rendering with chatId:', chatId);
 
   // Format timestamp for display
   const formatMessageTime = (timestamp: string) => {
@@ -158,138 +162,63 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   };
 
   useEffect(() => {
+    console.log('ChatView effect: chatId:', chatId, 'chatInfo:', chatInfo);
     if (chatId) {
       fetchMessages();
-
-      // WebSocket client
-      let ws;
-      let isMounted = true;
-      ws = new WebSocket('ws://localhost:3002');
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'frontend' }));
-        // Immediately mark as read and broadcast status_update
-        (async () => {
-          await markChatAsRead(chatId);
-          setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
-          const statusUpdate = {
-            type: 'status_update',
-            chat: {
-              id: chatId,
-              uuid: chatInfo?.uuid,
-              waiting: false
-            }
-          };
-          ws.send(JSON.stringify(statusUpdate));
-        })();
-      };
-      ws.onmessage = async (event) => {
-        try {
-          // Convert Blob to text if needed
-          const data = event.data instanceof Blob 
-            ? JSON.parse(await event.data.text())
-            : JSON.parse(event.data);
-            
-          if (data.type === 'status_update' && data.chat) {
-            // Update chat status
-            if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
-              setChatInfo(prev => prev ? { ...prev, waiting: data.chat.waiting } : null);
-            }
-          } else if (data.chat && data.question) {
-            // Проверяем, что это нужный чат
-            if (data.chat.id === chatId || data.chat.uuid === chatInfo?.uuid) {
-              // Обновляем сообщения
-              let newMessages = [];
-              if (data.answer) {
-                newMessages = [
-                  {
-                    id: data.question.id,
-                    chat_id: data.chat.id,
-                    created_at: data.question.created_at,
-                    message: data.question.message,
-                    message_type: 'question',
-                    ai: false
-                  },
-                  {
-                    id: data.answer.id,
-                    chat_id: data.chat.id,
-                    created_at: data.answer.created_at,
-                    message: data.answer.message,
-                    message_type: 'answer',
-                    ai: !!data.answer.ai
-                  }
-                ];
-              } else {
-                newMessages = [
-                  {
-                    id: data.question.id,
-                    chat_id: data.chat.id,
-                    created_at: data.question.created_at,
-                    message: data.question.message,
-                    message_type: 'question',
-                    ai: false
-                  }
-                ];
-              }
-              setMessages((prev) => {
-                // Добавляем новые сообщения к существующим
-                const updatedMessages = [...prev, ...newMessages];
-                // Сортируем по времени
-                return updatedMessages.sort((a, b) => {
-                  const timeA = new Date(a.created_at).getTime();
-                  const timeB = new Date(b.created_at).getTime();
-                  if (timeA === timeB) {
-                    return a.message_type === 'question' ? -1 : 1;
-                  }
-                  return timeA - timeB;
-                });
-              });
-              setAiEnabled(data.chat.ai);
-              setChatInfo((prev) => prev ? { ...prev, ai: data.chat.ai, waiting: data.chat.waiting } : data.chat);
-            }
-          }
-        } catch (e) {
-          console.error('WS message parse error', e);
-        }
-      };
-      ws.onerror = (e) => {
-        console.error('WebSocket error', e);
-      };
-
-      // Add 5-second interval to update chat status
-      const statusInterval = setInterval(async () => {
-        if (isMounted && chatId) {
-          try {
-            // Update chat status in database
-            await markChatAsRead(chatId);
-            
-            // Update local state immediately
-            setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
-            
-            // Send WebSocket message to update other components
-            if (ws.readyState === WebSocket.OPEN) {
-              const statusUpdate = { 
-                type: 'status_update',
-                chat: { 
-                  id: chatId,
-                  uuid: chatInfo?.uuid,
-                  waiting: false
-                }
-              };
-              ws.send(JSON.stringify(statusUpdate));
-            }
-          } catch (error) {
-            console.error('Failed to update chat status:', error);
-          }
-        }
-      }, 5000);
-
-      return () => {
-        isMounted = false;
-        ws && ws.close();
-        clearInterval(statusInterval);
-      };
     }
-  }, [chatId, chatInfo?.uuid]);
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.chat && lastMessage.chat.id === chatId) {
+      console.log('lastMessage:', lastMessage);
+      console.log('current messages:', messages);
+      // Improved duplicate check: by id, created_at, and message
+      if (lastMessage.question) {
+        setMessages(prev => {
+          const exists = prev.some(
+            m => m.id === lastMessage.question.id ||
+                 (m.created_at === lastMessage.question.created_at && m.message === lastMessage.question.message)
+          );
+          if (exists) return prev;
+          const newMsg: Message = {
+            id: lastMessage.question.id,
+            chat_id: lastMessage.chat.id,
+            created_at: lastMessage.question.created_at,
+            message: lastMessage.question.message,
+            message_type: 'question' as const,
+            ai: false
+          };
+          let updated = [...prev, newMsg];
+          if (lastMessage.answer) {
+            const existsAns = prev.some(m => m.id === lastMessage.answer.id || (m.created_at === lastMessage.answer.created_at && m.message === lastMessage.answer.message));
+            if (!existsAns) {
+              const answerMsg: Message = {
+                id: lastMessage.answer.id,
+                chat_id: lastMessage.chat.id,
+                created_at: lastMessage.answer.created_at,
+                message: lastMessage.answer.message,
+                message_type: 'answer' as const,
+                ai: !!lastMessage.answer.ai
+              };
+              updated.push(answerMsg);
+            }
+          }
+          // Sort by time and type
+          return updated.sort((a, b) => {
+            const timeA = new Date(a.created_at).getTime();
+            const timeB = new Date(b.created_at).getTime();
+            if (timeA === timeB) {
+              return a.message_type === 'question' ? -1 : 1;
+            }
+            return timeA - timeB;
+          });
+        });
+        setAiEnabled(lastMessage.chat.ai);
+        setChatInfo((prev) => prev ? { ...prev, ai: lastMessage.chat.ai, waiting: lastMessage.chat.waiting } : lastMessage.chat);
+      }
+    }
+  }, [lastMessage, chatId, messages]);
 
   useEffect(() => {
     scrollToBottom();
@@ -303,23 +232,10 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     e.preventDefault();
     if (!chatId || !newMessage.trim()) return;
     try {
-      // Save message to database
       const savedMessage = await sendMessage(chatId, newMessage, false);
-      
-      // Update messages list
       setMessages(prev => [...prev, savedMessage]);
-      
-      // Update chat info
       setChatInfo(prev => prev ? { ...prev, waiting: true } : null);
-      
-      // Send to WebSocket for Telegram bot
-      const ws = new WebSocket('ws://localhost:3002');
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'frontend' }));
-        ws.send(JSON.stringify({ chat_id: chatInfo?.uuid, message: newMessage }));
-        ws.close();
-      };
-      
+      wsSendMessage({ chat_id: chatInfo?.uuid, message: newMessage });
       setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);

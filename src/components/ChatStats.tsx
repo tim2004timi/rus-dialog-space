@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getChatStats } from '@/lib/api';
 import { MessageSquare, Send, CircleDot } from 'lucide-react';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 const ChatStats = () => {
   const [stats, setStats] = useState({
@@ -9,6 +10,7 @@ const ChatStats = () => {
     ai: 0
   });
   const [loading, setLoading] = useState(true);
+  const { lastMessage } = useWebSocket();
 
   const fetchStats = async () => {
     try {
@@ -23,34 +25,13 @@ const ChatStats = () => {
 
   useEffect(() => {
     fetchStats();
-    
-    // WebSocket client
-    let ws = new WebSocket('ws://localhost:3002');
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'frontend' }));
-    };
-    ws.onmessage = async (event) => {
-      try {
-        // Convert Blob to text if needed
-        const data = event.data instanceof Blob 
-          ? JSON.parse(await event.data.text())
-          : JSON.parse(event.data);
-          
-        if (data.type === 'status_update' || data.type === 'stats_update' || data.chat) {
-          // When we receive a chat update, status update, or stats update, refresh the stats
-          fetchStats();
-        }
-      } catch (e) {
-        console.error('WS message parse error', e);
-      }
-    };
-    ws.onerror = (e) => {
-      console.error('WebSocket error', e);
-    };
-    return () => {
-      ws && ws.close();
-    };
   }, []);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    // Handle stats updates from WebSocket here if needed
+    // For example, you can refetch stats or update state based on lastMessage
+  }, [lastMessage]);
 
   return (
     <div className="bg-white border-b border-gray-300 py-3 px-4 flex items-center h-14">

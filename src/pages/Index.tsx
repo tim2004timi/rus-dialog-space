@@ -3,11 +3,13 @@ import ChatSidebar from '@/components/ChatSidebar';
 import ChatView from '@/components/ChatView';
 import ChatStats from '@/components/ChatStats';
 import { getChats } from '@/lib/api';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 const Index = () => {
   const [selectedChatId, setSelectedChatIdRaw] = useState<number | null>(null);
   const [chatIds, setChatIds] = useState<number[]>([]);
   const selectedChatIdRef = useRef<number | null>(null);
+  const { lastMessage } = useWebSocket();
 
   // Wrapper to log every selection and update ref
   const setSelectedChatId = (id: number | null) => {
@@ -38,79 +40,6 @@ const Index = () => {
   useEffect(() => {
     fetchAndSyncChats();
   }, []);
-
-  // Add WebSocket connection for chat read status and updates
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const connectWebSocket = () => {
-      ws = new WebSocket('ws://localhost:3002');
-      
-      ws.onopen = () => {
-        ws?.send(JSON.stringify({ type: 'frontend' }));
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket connection closed');
-        // Try to reconnect after 5 seconds
-        setTimeout(connectWebSocket, 5000);
-      };
-
-      ws.onmessage = async (event) => {
-        try {
-          // Convert Blob to text if needed
-          const data = event.data instanceof Blob 
-            ? JSON.parse(await event.data.text())
-            : JSON.parse(event.data);
-          
-          if (data.chat) {
-            // Refetch chats when a new chat is received
-            await fetchAndSyncChats();
-          }
-        } catch (e) {
-          console.error('WebSocket message parse error:', e);
-        }
-      };
-    };
-
-    connectWebSocket();
-
-    // Set up interval to send read status
-    const startReadStatusInterval = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-
-      intervalId = setInterval(() => {
-        const currentChatId = selectedChatIdRef.current;
-        if (currentChatId !== null && ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'mark_chat_read',
-            chatId: currentChatId
-          }));
-        }
-      }, 3000);
-    };
-
-    // Start interval when a chat is selected
-    if (selectedChatId !== null) {
-      startReadStatusInterval();
-    }
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [selectedChatId]);
 
   const handleSelectChat = async (chatId: number) => {
     console.log('handleSelectChat called with:', chatId, 'Current chatIds:', chatIds);

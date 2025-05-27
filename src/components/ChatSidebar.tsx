@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Chat, getChats } from '@/lib/api';
 import { CircleDot, MessageSquare } from 'lucide-react';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 interface ChatSidebarProps {
   onSelectChat: (chatId: number) => void;
@@ -11,6 +12,7 @@ interface ChatSidebarProps {
 const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebarProps) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
+  const { lastMessage } = useWebSocket();
 
   // Log chats every render
   console.log('Rendering sidebar with chats:', chats);
@@ -29,131 +31,20 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
 
   useEffect(() => {
     fetchChats();
-    // WebSocket client
-    let ws = new WebSocket('ws://localhost:3002');
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'frontend' }));
-    };
-    ws.onmessage = async (event) => {
-      try {
-        // Convert Blob to text if needed
-        const data = event.data instanceof Blob 
-          ? JSON.parse(await event.data.text())
-          : JSON.parse(event.data);
-        
-        console.log('Received WebSocket message:', data);
-        
-        if (data.type === 'status_update') {
-          // Update chat status in the local state
-          setChats(prevChats => 
-            prevChats.map(chat => 
-              chat.id === data.chatId 
-                ? { ...chat, waiting: data.waiting }
-                : chat
-            )
-          );
-        } else if (data.type === 'chat_deleted') {
-          // Remove deleted chat from the list
-          setChats(prevChats => prevChats.filter(chat => chat.id !== data.chatId));
-        } else if (data.type === 'stats_update') {
-          // Stats update doesn't require chat list update
-          return;
-        } else if (data.chat) {
-          // Handle new chat or chat update
-          setChats(prevChats => {
-            const existingChat = prevChats.find(c => c.uuid === data.chat.uuid);
-            console.log('Existing chat found:', existingChat);
-            
-            // If chat doesn't exist in our list, fetch it from API
-            if (!existingChat) {
-              console.log('Chat not found in list, fetching from API:', data.chat.uuid);
-              // Fetch the chat from API
-              fetch(`http://localhost:3001/api/chats/${data.chat.uuid}`)
-                .then(response => {
-                  if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                  }
-                  return response.json();
-                })
-                .then(newChat => {
-                  console.log('Received new chat from API:', newChat);
-                  // Add message information to the new chat
-                  const chatWithMessage = {
-                    ...newChat,
-                    lastMessage: data.question.message,
-                    lastMessageTime: data.question.created_at
-                  };
-                  console.log('Prepared chat with message:', chatWithMessage);
-                  
-                  setChats(currentChats => {
-                    console.log('Current chats before update:', currentChats);
-                    const alreadyExists = currentChats.some(c => c.uuid === chatWithMessage.uuid);
-                    if (!alreadyExists) {
-                      const updatedChats = [chatWithMessage, ...currentChats];
-                      console.log('Updated chats list:', updatedChats);
-                      return updatedChats;
-                    }
-                    console.log('Chat already exists in list');
-                    return currentChats;
-                  });
-                })
-                .catch(error => {
-                  console.error('Error fetching new chat:', error);
-                  // If API call fails, try to use the chat data from WebSocket
-                  console.log('Using WebSocket data as fallback:', data.chat);
-                  setChats(currentChats => {
-                    const alreadyExists = currentChats.some(c => c.uuid === data.chat.uuid);
-                    if (!alreadyExists) {
-                      const chatWithMessage = {
-                        ...data.chat,
-                        lastMessage: data.question.message,
-                        lastMessageTime: data.question.created_at
-                      };
-                      console.log('Adding fallback chat to list:', chatWithMessage);
-                      const updatedChats = [chatWithMessage, ...currentChats];
-                      console.log('Updated chats list (fallback):', updatedChats);
-                      return updatedChats;
-                    }
-                    console.log('Fallback chat already exists in list');
-                    return currentChats;
-                  });
-                });
-              return prevChats; // Return current chats while fetching
-            }
-
-            // If chat exists, update it
-            const idx = prevChats.findIndex(c => c.uuid === data.chat.uuid);
-            let lastMessage = data.answer ? data.answer.message : data.question.message;
-            let lastMessageTime = data.answer ? data.answer.created_at : data.question.created_at;
-            let updatedChat = {
-              ...data.chat,
-              lastMessage,
-              lastMessageTime
-            };
-            
-            if (idx !== -1) {
-              console.log('Updating existing chat:', updatedChat);
-              // Update existing chat
-              const newChats = [...prevChats];
-              newChats[idx] = { ...newChats[idx], ...updatedChat };
-              console.log('Updated chats list:', newChats);
-              return newChats;
-            }
-            
-            return prevChats;
-          });
-        }
-      } catch (e) {
-        console.error('WS message parse error', e);
-      }
-    };
-    ws.onerror = (e) => {
-      console.error('WebSocket error', e);
-    };
-    return () => {
-      ws && ws.close();
-    };
   }, []);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    // Only refetch if the update is relevant
+    if (
+      lastMessage.type === 'status_update' ||
+      lastMessage.type === 'chat_deleted' ||
+      lastMessage.chat || // new chat or message
+      lastMessage.type === 'stats_update'
+    ) {
+      fetchChats();
+    }
+  }, [lastMessage]);
 
   // Only render chats with valid id and in validChatIds
   let validChats = chats.filter(chat => typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined);
@@ -173,6 +64,15 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
       }
     }
   }, [chats, validChatIds, selectedChatId, onSelectChat]);
+
+  useEffect(() => {
+    if (selectedChatId == null) return;
+    setChats(prevChats =>
+      prevChats.map(chat =>
+        chat.id === selectedChatId ? { ...chat, waiting: false } : chat
+      )
+    );
+  }, [selectedChatId]);
 
   const waitingChats = validChats.filter(chat => chat.waiting);
   const regularChats = validChats.filter(chat => !chat.waiting);
