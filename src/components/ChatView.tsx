@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useWebSocket } from '@/contexts/WebSocketContext';
+import { useChat } from '@/contexts/ChatContext';
 
 interface ChatViewProps {
   chatId: number | null;
@@ -32,6 +33,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { lastMessage, sendMessage: wsSendMessage } = useWebSocket();
+  const { markChatAsRead: markChatAsReadFromContext, refreshChats } = useChat();
 
   console.log('ChatView rendering with chatId:', chatId);
 
@@ -146,10 +148,6 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
           setAiEnabled(chatData.ai);
           setChatInfo(chatData);
         }
-        
-        // Mark chat as read when opened
-        console.log('Marking chat as read after fetching messages:', chatId);
-        await markChatAsRead(chatId);
       }
     } catch (error) {
       setError('Ошибка при загрузке сообщений.');
@@ -234,9 +232,17 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     try {
       const savedMessage = await sendMessage(chatId, newMessage, false);
       setMessages(prev => [...prev, savedMessage]);
-      setChatInfo(prev => prev ? { ...prev, waiting: true } : null);
+      // When manager sends a message, mark the chat as read
+      if (chatId) {
+        markChatAsReadFromContext(chatId);
+      }
+      setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
       wsSendMessage({ chat_id: chatInfo?.uuid, message: newMessage });
       setNewMessage('');
+      
+      // Refresh the chats list in context to update sidebar status
+      refreshChats();
+      
     } catch (error) {
       console.error('Failed to send message:', error);
       toast.error('Не удалось отправить сообщение');

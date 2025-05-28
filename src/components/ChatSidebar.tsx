@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Chat, getChats } from '@/lib/api';
 import { CircleDot, MessageSquare } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
+import { useChat } from '@/contexts/ChatContext';
 
 interface ChatSidebarProps {
   onSelectChat: (chatId: number) => void;
@@ -10,41 +11,10 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebarProps) => {
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { lastMessage } = useWebSocket();
+  const { chats, loading, unreadCount } = useChat();
 
   // Log chats every render
   console.log('Rendering sidebar with chats:', chats);
-
-  const fetchChats = async () => {
-    try {
-      const chatData = await getChats();
-      console.log('Fetched chats from backend:', chatData);
-      setChats(chatData);
-    } catch (error) {
-      console.error('Failed to fetch chats:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchChats();
-  }, []);
-
-  useEffect(() => {
-    if (!lastMessage) return;
-    // Only refetch if the update is relevant
-    if (
-      lastMessage.type === 'status_update' ||
-      lastMessage.type === 'chat_deleted' ||
-      lastMessage.chat || // new chat or message
-      lastMessage.type === 'stats_update'
-    ) {
-      fetchChats();
-    }
-  }, [lastMessage]);
 
   // Only render chats with valid id and in validChatIds
   let validChats = chats.filter(chat => typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined);
@@ -64,15 +34,6 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
       }
     }
   }, [chats, validChatIds, selectedChatId, onSelectChat]);
-
-  useEffect(() => {
-    if (selectedChatId == null) return;
-    setChats(prevChats =>
-      prevChats.map(chat =>
-        chat.id === selectedChatId ? { ...chat, waiting: false } : chat
-      )
-    );
-  }, [selectedChatId]);
 
   const waitingChats = validChats.filter(chat => chat.waiting);
   const regularChats = validChats.filter(chat => !chat.waiting);

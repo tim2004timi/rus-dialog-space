@@ -12,7 +12,7 @@ interface ChatPreviewProps {
 }
 
 const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
-  console.log('Rendering ChatPreview for chat:', chat);
+  console.log('Rendering ChatPreview for chat:', chat.uuid, 'waiting:', chat.waiting);
   const truncateMessage = (message: string | undefined, maxLength: number = 30) => {
     if (!message) return 'Нет сообщений';
     return message.length > maxLength ? message.substring(0, maxLength) + '...' : message;
