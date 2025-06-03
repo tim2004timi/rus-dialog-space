@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { Chat, Message, getChats, getChatMessages, sendMessage as apiSendMessage, markChatAsRead as apiMarkChatAsRead } from '@/lib/api';
+import { Chat, Message, getChats, getChatMessages, sendMessage as apiSendMessage, markChatAsRead as apiMarkChatAsRead, getChatStats } from '@/lib/api';
 import { useWebSocket } from './WebSocketContext';
 
 interface ChatContextType {
@@ -22,8 +22,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
-  const { lastMessage, sendMessage: wsSendMessage } = useWebSocket();
+  const { lastMessage, sendMessage: wsSendMessage, lastUpdate } = useWebSocket();
   const isSelectingChat = useRef(false);
+  const [stats, setStats] = useState<{ total: number; pending: number; ai: number }>({ total: 0, pending: 0, ai: 0 });
 
   const refreshChats = useCallback(async () => {
     try {
@@ -156,6 +157,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
   }, [lastMessage, selectedChat]);
+
+  // Получение статистики
+  const fetchStats = useCallback(async () => {
+    try {
+      const statsData = await getChatStats();
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  // Обработка удаления чата по WebSocket
+  useEffect(() => {
+    if (!lastUpdate) return;
+    if (lastUpdate.type === 'chat_deleted' && lastUpdate.chatId) {
+      setChats(prevChats => prevChats.filter(chat => String(chat.id) !== String(lastUpdate.chatId)));
+      setSelectedChat(prev => (prev && String(prev.id) === String(lastUpdate.chatId) ? null : prev));
+      fetchStats();
+    }
+    if (lastUpdate.type === 'chat_ai_updated' && lastUpdate.chatId) {
+      setChats(prevChats => prevChats.map(chat => String(chat.id) === String(lastUpdate.chatId) ? { ...chat, ai: lastUpdate.ai } : chat));
+      fetchStats();
+    }
+  }, [lastUpdate, fetchStats]);
 
   const selectChat = useCallback(async (chatId: number) => {
     if (isSelectingChat.current) return;

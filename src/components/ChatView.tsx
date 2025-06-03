@@ -26,12 +26,16 @@ interface ChatViewProps {
 const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [newMessage, setNewMessage] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [chatInfo, setChatInfo] = useState<Chat | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const { lastMessage, sendMessage: wsSendMessage } = useWebSocket();
   const { markChatAsRead: markChatAsReadFromContext, refreshChats } = useChat();
 
@@ -96,13 +100,13 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     setError(null);
     try {
       setLoading(true);
+      setPage(1);
       let messagesData;
       let chatData;
-      // First try to get chat by ID
       const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
       if (chatResponse.ok) {
         chatData = await chatResponse.json();
-        messagesData = await getChatMessages(chatData.id);
+        messagesData = await getChatMessages(chatData.id, 1, 50);
       } else {
         if (chatResponse.status === 400 || chatResponse.status === 404) {
           setError('Чат не найден или недоступен.');
@@ -110,7 +114,6 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
           setMessages([]);
           return;
         }
-        // If not found by ID, try to get chat by UUID
         const chatsResponse = await fetch(`${API_URL}/chats`);
         if (chatsResponse.ok) {
           const chats = await chatsResponse.json();
@@ -118,7 +121,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
             c.id === Number(chatId) || c.uuid === String(chatId)
           );
           if (chatData) {
-            messagesData = await getChatMessages(chatData.id);
+            messagesData = await getChatMessages(chatData.id, 1, 50);
           } else {
             setError('Чат не найден или недоступен.');
             setChatInfo(null);
@@ -128,22 +131,9 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
         }
       }
       if (messagesData) {
-        // Сортируем сообщения по времени и типу
-        const sortedMessages = messagesData.sort((a, b) => {
-          const timeA = new Date(a.created_at).getTime();
-          const timeB = new Date(b.created_at).getTime();
-          
-          // Если время одинаковое, вопрос должен быть выше ответа
-          if (timeA === timeB) {
-            return a.message_type === 'question' ? -1 : 1;
-          }
-          
-          return timeA - timeB;
-        });
-        
-        setMessages(sortedMessages);
-        
-        // Update chat info
+        setMessages(messagesData);
+        setHasMore(messagesData.length === 50);
+        setPage(1);
         if (chatData) {
           setAiEnabled(chatData.ai);
           setChatInfo(chatData);
@@ -159,64 +149,56 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     }
   };
 
+  const fetchMoreMessages = async () => {
+    if (!chatId || isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    try {
+      const container = messagesContainerRef.current;
+      const prevScrollHeight = container ? container.scrollHeight : 0;
+
+      const nextPage = page + 1;
+      const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
+      let chatData = null;
+      if (chatResponse.ok) {
+        chatData = await chatResponse.json();
+      }
+      if (chatData) {
+        const moreMessages: Message[] = await getChatMessages(chatData.id, nextPage, 50);
+        // Фильтруем сообщения без контента и дубликаты
+        setMessages(prev => [
+          ...moreMessages.filter(msg => !!msg.content && msg.content !== 'undefined' && !prev.some(p => p.timestamp === msg.timestamp && p.content === msg.content)),
+          ...prev
+        ]);
+        setHasMore(moreMessages.length === 50);
+        setPage(nextPage);
+        // Восстанавливаем скролл
+        setTimeout(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - prevScrollHeight;
+          }
+        }, 0);
+      }
+    } catch (error) {
+      console.error('Ошибка при подгрузке сообщений:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    if (messagesContainerRef.current.scrollTop === 0 && hasMore && !isLoadingMore) {
+      fetchMoreMessages();
+    }
+  };
+
   useEffect(() => {
     console.log('ChatView effect: chatId:', chatId, 'chatInfo:', chatInfo);
     if (chatId) {
       fetchMessages();
     }
   }, [chatId]);
-
-  useEffect(() => {
-    if (!lastMessage) return;
-    if (lastMessage.chat && lastMessage.chat.id === chatId) {
-      console.log('lastMessage:', lastMessage);
-      console.log('current messages:', messages);
-      // Improved duplicate check: by id, created_at, and message
-      if (lastMessage.question) {
-        setMessages(prev => {
-          const exists = prev.some(
-            m => m.id === lastMessage.question.id ||
-                 (m.created_at === lastMessage.question.created_at && m.message === lastMessage.question.message)
-          );
-          if (exists) return prev;
-          const newMsg: Message = {
-            id: lastMessage.question.id,
-            chat_id: lastMessage.chat.id,
-            created_at: lastMessage.question.created_at,
-            message: lastMessage.question.message,
-            message_type: 'question' as const,
-            ai: false
-          };
-          let updated = [...prev, newMsg];
-          if (lastMessage.answer) {
-            const existsAns = prev.some(m => m.id === lastMessage.answer.id || (m.created_at === lastMessage.answer.created_at && m.message === lastMessage.answer.message));
-            if (!existsAns) {
-              const answerMsg: Message = {
-                id: lastMessage.answer.id,
-                chat_id: lastMessage.chat.id,
-                created_at: lastMessage.answer.created_at,
-                message: lastMessage.answer.message,
-                message_type: 'answer' as const,
-                ai: !!lastMessage.answer.ai
-              };
-              updated.push(answerMsg);
-            }
-          }
-          // Sort by time and type
-          return updated.sort((a, b) => {
-            const timeA = new Date(a.created_at).getTime();
-            const timeB = new Date(b.created_at).getTime();
-            if (timeA === timeB) {
-              return a.message_type === 'question' ? -1 : 1;
-            }
-            return timeA - timeB;
-          });
-        });
-        setAiEnabled(lastMessage.chat.ai);
-        setChatInfo((prev) => prev ? { ...prev, ai: lastMessage.chat.ai, waiting: lastMessage.chat.waiting } : lastMessage.chat);
-      }
-    }
-  }, [lastMessage, chatId, messages]);
 
   useEffect(() => {
     scrollToBottom();
@@ -231,18 +213,20 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     if (!chatId || !newMessage.trim()) return;
     try {
       const savedMessage = await sendMessage(chatId, newMessage, false);
-      setMessages(prev => [...prev, savedMessage]);
-      // When manager sends a message, mark the chat as read
+      const formattedMessage: Message = {
+        chatId: savedMessage.chat_id?.toString() || chatId.toString(),
+        content: savedMessage.message,
+        message_type: savedMessage.message_type || 'text',
+        ai: typeof savedMessage.ai === 'boolean' ? savedMessage.ai : false,
+        timestamp: savedMessage.created_at || ''
+      };
+      setMessages(prev => [...prev, formattedMessage]);
       if (chatId) {
         markChatAsReadFromContext(chatId);
       }
       setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
       wsSendMessage({ chat_id: chatInfo?.uuid, message: newMessage });
       setNewMessage('');
-      
-      // Refresh the chats list in context to update sidebar status
-      refreshChats();
-      
     } catch (error) {
       console.error('Failed to send message:', error);
       toast.error('Не удалось отправить сообщение');
@@ -325,7 +309,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       </div>
       
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-50" ref={messagesContainerRef} onScroll={handleScroll}>
         {loading && messages.length === 0 ? (
           <div className="flex justify-center p-4">
             <p className="text-gray-500">Загрузка сообщений...</p>
@@ -335,13 +319,22 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
             <p className="text-gray-500">Нет сообщений</p>
           </div>
         ) : (
-          messages.map((message) => (
-            <MessageBubble 
-              key={message.id} 
-              message={message} 
-              formatTime={formatMessageTime}
-            />
-          ))
+          <>
+            {isLoadingMore && (
+              <div className="flex justify-center p-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-400"></div>
+              </div>
+            )}
+            {[...messages]
+              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              .map((message, index) => (
+                <MessageBubble 
+                  key={message.timestamp + '-' + index}
+                  message={message}
+                  formatTime={formatMessageTime}
+                />
+              ))}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -394,7 +387,6 @@ interface MessageBubbleProps {
 
 const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
   const isQuestion = message.message_type === 'question';
-  
   return (
     <div className={`mb-4 flex ${isQuestion ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
@@ -407,10 +399,10 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
             </div>
           )}
         </div>
-        <p className="whitespace-pre-wrap break-words">{message.message}</p>
+        <p className="whitespace-pre-wrap break-words">{message.content}</p>
         <div className="text-right mt-1">
           <span className={`text-xs ${isQuestion ? 'text-gray-500' : 'text-gray-300'}`}>
-            {formatTime(message.created_at)}
+            {formatTime(message.timestamp)}
           </span>
         </div>
       </div>

@@ -1,112 +1,157 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from '../contexts/WebSocketContext';
-import { Message, WebSocketMessage } from '../types';
+import { Message } from '../types';
 
 interface ChatProps {
   chatId: string;
-  messages: Message[];
-  onSendMessage: (message: string) => void;
 }
 
-export const Chat: React.FC<ChatProps> = ({ chatId, messages, onSendMessage }) => {
+export const Chat: React.FC<ChatProps> = ({ chatId }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const { sendMessage, sendUpdate, lastMessage, lastUpdate, isMessagesConnected, isUpdatesConnected } = useWebSocket();
+  const [isLoading, setIsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const { sendMessage, lastMessage, isConnected } = useWebSocket();
+
+  const loadMessages = useCallback(async (pageNum: number) => {
+    if (!chatId) return;
+    
+    try {
+      setIsLoading(true);
+      const response = await fetch(`http://localhost:3001/api/chats/${chatId}/messages?page=${pageNum}&limit=50`);
+      if (!response.ok) {
+        throw new Error('Failed to load messages');
+      }
+      const data = await response.json();
+      console.log('Loaded messages:', data);
+      
+      if (pageNum === 1) {
+        setMessages(data);
+      } else {
+        setMessages(prev => [...prev, ...data]);
+      }
+      setHasMore(data.length === 50);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (chatId) {
+      setPage(1);
+      loadMessages(1);
+    }
+  }, [chatId, loadMessages]);
 
   useEffect(() => {
     if (lastMessage && lastMessage.chatId === chatId) {
-      // Handle incoming message
-      console.log('Received message:', lastMessage);
-      // You might want to update the messages state here
+      console.log('Received new message:', lastMessage);
+      setMessages(prev => {
+        // Check if message already exists
+        const exists = prev.some(msg => 
+          msg.content === lastMessage.content && 
+          msg.timestamp === lastMessage.timestamp
+        );
+        if (!exists) {
+          return [...prev, lastMessage];
+        }
+        return prev;
+      });
     }
   }, [lastMessage, chatId]);
 
   useEffect(() => {
-    if (lastUpdate) {
-      // Handle incoming update
-      console.log('Received update:', lastUpdate);
-      // You might want to refresh the chat data here
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [lastUpdate]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputMessage.trim()) {
-      const message: WebSocketMessage = {
-        type: 'message',
-        chatId,
-        content: inputMessage,
-        timestamp: new Date().toISOString()
-      };
-      
-      sendMessage(message);
-      onSendMessage(inputMessage);
-      setInputMessage('');
+  const handleScroll = useCallback(() => {
+    if (!chatContainerRef.current) return;
+    
+    const { scrollTop } = chatContainerRef.current;
+    if (scrollTop === 0 && hasMore && !isLoading) {
+      setPage(prev => {
+        const nextPage = prev + 1;
+        loadMessages(nextPage);
+        return nextPage;
+      });
     }
-  };
+  }, [hasMore, isLoading, loadMessages]);
 
-  const handleUpdate = (update: Partial<WebSocketMessage>) => {
-    const fullUpdate: WebSocketMessage = {
-      type: 'update',
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputMessage.trim() || !isConnected) return;
+
+    const message: Message = {
       chatId,
-      ...update
+      content: inputMessage,
+      message_type: 'text',
+      ai: false,
+      timestamp: new Date().toISOString()
     };
-    sendUpdate(fullUpdate);
+
+    sendMessage(message);
+    setInputMessage('');
   };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+        onScroll={handleScroll}
+      >
+        {isLoading && (
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        )}
         {messages.map((message, index) => (
           <div
-            key={index}
-            className={`flex ${message.isBot ? 'justify-start' : 'justify-end'}`}
+            key={`${message.timestamp}-${index}`}
+            className={`flex ${message.ai ? 'justify-start' : 'justify-end'}`}
           >
             <div
               className={`max-w-[70%] rounded-lg p-3 ${
-                message.isBot
-                  ? 'bg-gray-200 text-gray-800'
+                message.ai
+                  ? 'bg-gray-100 text-gray-900'
                   : 'bg-blue-500 text-white'
               }`}
             >
-              {message.content}
+              <p className="text-sm">{message.content}</p>
+              <p className="text-xs mt-1 opacity-70">
+                {new Date(message.timestamp).toLocaleTimeString()}
+              </p>
             </div>
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
-
-      <div className="border-t p-4">
-        <form onSubmit={handleSendMessage} className="flex space-x-2">
+      <form onSubmit={handleSubmit} className="p-4 border-t">
+        <div className="flex space-x-2">
           <input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-            disabled={!isMessagesConnected}
+            placeholder={isConnected ? "Type a message..." : "Connecting..."}
+            disabled={!isConnected}
+            className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
             type="submit"
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 focus:outline-none disabled:opacity-50"
-            disabled={!isMessagesConnected || !inputMessage.trim()}
+            disabled={!isConnected || !inputMessage.trim()}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
           >
             Send
           </button>
-        </form>
-        <div className="mt-2 text-sm text-gray-500">
-          {!isMessagesConnected && (
-            <span className="text-red-500">Messages connection lost. Reconnecting...</span>
-          )}
-          {!isUpdatesConnected && (
-            <span className="text-red-500">Updates connection lost. Reconnecting...</span>
-          )}
         </div>
-      </div>
+      </form>
     </div>
   );
 }; 

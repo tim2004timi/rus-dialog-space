@@ -10,7 +10,7 @@ const ChatStats = () => {
     ai: 0
   });
   const [loading, setLoading] = useState(true);
-  const { lastMessage } = useWebSocket();
+  const { lastMessage, lastUpdate } = useWebSocket();
 
   const fetchStats = async () => {
     try {
@@ -28,10 +28,9 @@ const ChatStats = () => {
   }, []);
 
   useEffect(() => {
-    if (!lastMessage) return;
-    // Handle stats updates from WebSocket here if needed
-    // For example, you can refetch stats or update state based on lastMessage
-  }, [lastMessage]);
+    if (!lastUpdate) return;
+    fetchStats();
+  }, [lastUpdate]);
 
   return (
     <div className="bg-white border-b border-gray-300 py-3 px-4 flex items-center h-14">

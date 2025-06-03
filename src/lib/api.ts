@@ -31,34 +31,15 @@ export const getChats = async (): Promise<Chat[]> => {
       throw new Error('Failed to fetch chats');
     }
     const chats = await response.json();
-    console.log('Raw backend chats:', chats);
-    
-    // Get last message for each chat
-    const chatsWithLastMessage = await Promise.all(
-      chats.map(async (chat: any) => {
-        const messagesResponse = await fetch(`${API_URL}/chats/${chat.id}/messages`);
-        const messages = await messagesResponse.json();
-        const lastMessage = messages[messages.length - 1];
-        const mappedChat = {
-          id: chat.id,
-          uuid: chat.uuid,
-          waiting: chat.waiting,
-          ai: chat.ai,
-          lastMessage: lastMessage?.message || '',
-          lastMessageTime: lastMessage?.created_at || new Date().toISOString(),
-          unread: false // This should be implemented based on your business logic
-        };
-        console.log('Mapped chat:', mappedChat);
-        return mappedChat;
-      })
-    );
-    console.log('Mapped chatsWithLastMessage:', chatsWithLastMessage);
-    
-    return chatsWithLastMessage.sort((a, b) => {
-      if (a.waiting && !b.waiting) return -1;
-      if (!a.waiting && b.waiting) return 1;
-      return new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime();
-    });
+    return chats.map((chat: any) => ({
+      id: chat.id,
+      uuid: chat.uuid,
+      waiting: chat.waiting,
+      ai: chat.ai,
+      lastMessage: chat.last_message?.content || '',
+      lastMessageTime: chat.last_message?.timestamp || '',
+      unread: false // This should be implemented based on your business logic
+    }));
   } catch (error) {
     console.error('Error fetching chats:', error);
     toast.error('Не удалось загрузить список чатов');
@@ -67,20 +48,19 @@ export const getChats = async (): Promise<Chat[]> => {
 };
 
 // Get messages for a specific chat
-export const getChatMessages = async (chatId: number): Promise<Message[]> => {
+export const getChatMessages = async (chatId: number | string, page: number = 1, limit: number = 50): Promise<Message[]> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/messages`);
+    const response = await fetch(`${API_URL}/chats/${chatId}/messages?page=${page}&limit=${limit}`);
     if (!response.ok) {
       throw new Error('Failed to fetch messages');
     }
     const messages = await response.json();
     return messages.map((msg: any) => ({
-      id: msg.id,
-      chat_id: msg.chat_id,
-      created_at: msg.created_at,
-      message: msg.message,
-      message_type: msg.message_type,
-      ai: msg.ai
+      chatId: msg.chatId || msg.chat_id?.toString() || chatId.toString(),
+      content: msg.content || msg.message,
+      message_type: msg.message_type || 'text',
+      ai: typeof msg.ai === 'boolean' ? msg.ai : false,
+      timestamp: msg.timestamp || msg.created_at || ''
     }));
   } catch (error) {
     console.error('Error fetching messages:', error);
