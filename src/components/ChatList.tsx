@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Chat } from '../types';
+import { Chat, getChats } from '@/lib/api';
 import { useWebSocket } from '../contexts/WebSocketContext';
 
 interface ChatListProps {
@@ -15,11 +15,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onSelectChat, selectedChatId
   const loadChats = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/chats');
-      if (!response.ok) {
-        throw new Error('Failed to load chats');
-      }
-      const data = await response.json();
+      const data = await getChats();
       console.log('Loaded chats:', data);
       setChats(data);
     } catch (error) {
@@ -62,16 +58,16 @@ export const ChatList: React.FC<ChatListProps> = ({ onSelectChat, selectedChatId
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <div className="font-medium">
-                Chat {chat.id}
+                {chat.name || `Чат #${chat.id}`}
                 {chat.ai && (
                   <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                     AI
                   </span>
                 )}
               </div>
-              {chat.last_message && (
+              {chat.lastMessage && (
                 <div className="text-sm text-gray-600 mt-1 truncate">
-                  {chat.last_message.content}
+                  {chat.lastMessage}
                 </div>
               )}
             </div>

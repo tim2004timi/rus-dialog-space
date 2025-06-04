@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useChat } from '@/contexts/ChatContext';
+import { ChatTags } from '@/components/ChatTags';
 
 interface ChatViewProps {
   chatId: number | null;
@@ -288,11 +289,22 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Chat Header */}
-      <div className="border-b border-gray-300 py-3 px-4 flex justify-between items-center h-14">
-        <div>
-          <h2 className="text-lg font-medium text-gray-800">Чат #{chatId}</h2>
+      <div className="border-b border-gray-300 py-2 px-4 flex items-center justify-between h-14">
+        <div className="flex items-center gap-4 flex-grow">
+          <h2 className="text-lg font-medium text-gray-800 truncate">
+            {chatInfo?.name || `Чат #${chatId}`}
+          </h2>
+          {chatInfo && (
+            <ChatTags
+              chatId={chatInfo.id}
+              tags={chatInfo.tags || []}
+              onTagsUpdate={(newTags) => {
+                setChatInfo(prev => prev ? { ...prev, tags: newTags } : null);
+              }}
+            />
+          )}
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-4 flex-shrink-0">
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-600">ИИ</span>
             <Switch checked={aiEnabled} onCheckedChange={handleAiToggle} />

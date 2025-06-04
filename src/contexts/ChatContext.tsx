@@ -27,6 +27,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isSelectingChat = useRef(false);
   const selectedChatRef = useRef<Chat | null>(null);
   const [stats, setStats] = useState<{ total: number; pending: number; ai: number }>({ total: 0, pending: 0, ai: 0 });
+  const lastStatsUpdate = useRef<number>(0);
 
   useEffect(() => {
     selectedChatRef.current = selectedChat;
@@ -60,108 +61,154 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshChats();
   }, [refreshChats]);
 
-  // Handle WebSocket messages
-  useEffect(() => {
-    // Log 1: useEffect triggered with lastMessage
-    console.log('ChatContext useEffect triggered. lastMessage:', lastMessage);
-
-    if (!lastMessage) return;
-
-    // Use a more specific type if possible, or be cautious with casting
-    const wsMsg = lastMessage as unknown as WebSocketMessage;
-
-    // Log 2: Checking message type
-    console.log('Checking WebSocket message type. type:', wsMsg.type);
-
-    // Обработка сообщений типа 'message' и 'update' (для новых сообщений и обновлений последнего сообщения в списке)
-    if (wsMsg.type === 'message' || wsMsg.type === 'update') {
-      // Log 3: Message type is message or update. Checking selected chat.
-      console.log('Message type is message or update. Checking selected chat.');
-      
-      // **Используем значение из ref для сравнения**
-      const currentSelectedChat = selectedChatRef.current;
-      console.log('Comparing:', {
-        selectedChatId: currentSelectedChat?.id, // Логируем ID выбранного чата из ref
-        wsMsgChatId: wsMsg.chatId,
-        comparisonResult: currentSelectedChat && currentSelectedChat.id === wsMsg.chatId
-      });
-
-      // Если это чат, который сейчас открыт — добавляем сообщение в messages
-      // Убедимся, что wsMsg.chatId - число, так как selectedChat.id - число
-      if (currentSelectedChat && currentSelectedChat.id === Number(wsMsg.chatId)) { // Сравниваем по id из БД
-        // Log 4: Chat is selected and matches message chatId. Updating messages.
-        console.log('Selected chat matches message chatId. Updating messages.', wsMsg);
-
-        // Создаем объект сообщения, убедившись, что он соответствует типу Message
-        const newMessage: Message = {
-            id: wsMsg.id ?? Date.now(), // Используем id из wsMsg или временный
-            chat_id: Number(wsMsg.chatId), // Убедимся, что это числовой ID чата
-            created_at: wsMsg.timestamp || new Date().toISOString(), // Используем timestamp
-            message: wsMsg.content || '', // Используем content
-            message_type: (wsMsg.message_type === 'question' ? 'question' : (wsMsg.message_type === 'answer' ? 'answer' : 'text')), // Уточняем тип
-            ai: wsMsg.ai ?? false, // Используем ai
-          }
-
-        console.log('Adding new message to state:', newMessage);
-
-        setMessages(prev => [
-          ...prev,
-          newMessage
-        ]);
-        console.log('Messages updated. Current messages count (may be slightly behind): ', messages.length);
-      } else {
-        console.log('Selected chat does NOT match message chatId or selectedChat is null.');
-      }
-
-      // В любом случае обновляем последнее сообщение в списке чатов
-      // Убедимся, что wsMsg.chatId - число для сравнения с chat.id
-      setChats(prevChats => prevChats.map(chat =>
-        chat.id === Number(wsMsg.chatId)
-          ? {
-              ...chat,
-              lastMessage: wsMsg.content || '', // Используем content
-              lastMessageTime: wsMsg.timestamp || chat.lastMessageTime, // Используем timestamp
-              // Возможно, нужно также обновить waiting статус, если он есть в wsMsg и важен для списка
-              // waiting: wsMsg.waiting ?? chat.waiting,
-            }
-          : chat
-      ));
-      console.log('Chats list updated.');
-      // return; // Не завершаем обработку, если есть другие типы сообщений, которые нужно обработать в этом useEffect
-    }
-
-    // Здесь может быть логика для других типов сообщений, если они появятся В ЭТОМ ЖЕ useEffect
-    // Если status_update и chat_deleted обрабатываются в другом useEffect, этот блок не нужен
-
-  }, [lastMessage, messages.length]); // Добавил messages.length в зависимости, чтобы видеть актуальное количество сообщений в логе после setMessages
-
   // Получение статистики
   const fetchStats = useCallback(async () => {
+    const now = Date.now();
+    // Обновляем статистику не чаще чем раз в 2 секунды
+    if (now - lastStatsUpdate.current < 2000) {
+      return;
+    }
     try {
       const statsData = await getChatStats();
       setStats(statsData);
+      lastStatsUpdate.current = now;
     } catch (error) {
-      console.error('Failed to fetch stats:', error);
+      console.error('Error fetching stats:', error);
     }
   }, []);
 
+  // Handle WebSocket messages
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    if (!lastMessage) return;
+
+    try {
+      const data = typeof lastMessage === 'string' ? JSON.parse(lastMessage) : lastMessage;
+      console.log('WebSocket message received:', data);
+
+      if (data.type === 'message') {
+        const wsMsg = data;
+        console.log('Processing WebSocket message:', wsMsg);
+        
+        // Log 1: useEffect triggered with lastMessage
+        console.log('ChatContext useEffect triggered. lastMessage:', lastMessage);
+
+        // Use a more specific type if possible, or be cautious with casting
+        const wsMsgTyped = wsMsg as unknown as WebSocketMessage;
+
+        // Log 2: Checking message type
+        console.log('Checking WebSocket message type. type:', wsMsgTyped.type);
+
+        // Обработка сообщений типа 'message' и 'update' (для новых сообщений и обновлений последнего сообщения в списке)
+        if (wsMsgTyped.type === 'message' || wsMsgTyped.type === 'update') {
+          // Log 3: Message type is message or update. Checking selected chat.
+          console.log('Message type is message or update. Checking selected chat.');
+
+          // Получаем текущее значение selectedChat из ref
+          const currentSelectedChat = selectedChatRef.current;
+          console.log('Current selected chat from ref:', currentSelectedChat);
+
+          console.log('Comparing:', {
+            selectedChatId: currentSelectedChat?.id,
+            wsMsgChatId: wsMsgTyped.chatId,
+            comparisonResult: currentSelectedChat && currentSelectedChat.id === wsMsgTyped.chatId
+          });
+
+          // Если это чат, который сейчас открыт — добавляем сообщение в messages
+          if (currentSelectedChat && currentSelectedChat.id === Number(wsMsgTyped.chatId)) {
+            console.log('Selected chat matches message chatId. Updating messages.', wsMsgTyped);
+
+            const newMessage: Message = {
+              id: wsMsgTyped.id ?? Date.now(),
+              chat_id: Number(wsMsgTyped.chatId),
+              created_at: wsMsgTyped.timestamp || new Date().toISOString(),
+              message: wsMsgTyped.content || '',
+              message_type: wsMsgTyped.message_type === 'question' ? 'question' : 'answer',
+              ai: wsMsgTyped.ai ?? false,
+            }
+
+            setMessages(prevMessages => [...prevMessages, newMessage]);
+            console.log('Messages updated with new message.');
+          }
+
+          // Обновляем список чатов
+          setChats(prevChats => {
+            const updatedChats = prevChats.map(chat =>
+              chat.id === Number(wsMsgTyped.chatId)
+                ? {
+                    ...chat,
+                    lastMessage: wsMsgTyped.content || '',
+                    lastMessageTime: wsMsgTyped.timestamp || chat.lastMessageTime,
+                  }
+                : chat
+            );
+            return updatedChats;
+          });
+          console.log('Chats list updated.');
+        }
+      } else if (data.type === 'chat_update') {
+        console.log('Processing chat update:', data);
+        
+        // Update chat status in the messages list
+        setMessages(prevMessages => {
+          return prevMessages.map(msg => {
+            if (msg.chat_id === data.chat_id) {
+              return { ...msg, waiting: data.waiting };
+            }
+            return msg;
+          });
+        });
+
+        // Update selected chat if it's the one being updated
+        if (selectedChatRef.current?.id === data.chat_id) {
+          setSelectedChat(prev => {
+            if (prev) {
+              return { ...prev, waiting: data.waiting };
+            }
+            return prev;
+          });
+        }
+
+        // Update chats list
+        setChats(prevChats => {
+          const updatedChats = prevChats.map(chat =>
+            chat.id === data.chat_id
+              ? { ...chat, waiting: data.waiting }
+              : chat
+          );
+          return updatedChats;
+        });
+
+        // Обновляем статистику при изменении статуса чата
+        fetchStats();
+      }
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+    }
+  }, [lastMessage, fetchStats]);
 
   // Обработка удаления чата по WebSocket
   useEffect(() => {
     if (!lastUpdate) return;
+    
     if (lastUpdate.type === 'chat_deleted' && lastUpdate.chatId) {
       setChats(prevChats => prevChats.filter(chat => String(chat.id) !== String(lastUpdate.chatId)));
       setSelectedChat(prev => (prev && String(prev.id) === String(lastUpdate.chatId) ? null : prev));
       fetchStats();
     }
     if (lastUpdate.type === 'chat_ai_updated' && lastUpdate.chatId) {
-      setChats(prevChats => prevChats.map(chat => String(chat.id) === String(lastUpdate.chatId) ? { ...chat, ai: lastUpdate.ai } : chat));
+      setChats(prevChats => prevChats.map(chat => 
+        String(chat.id) === String(lastUpdate.chatId) 
+          ? { ...chat, ai: lastUpdate.ai } 
+          : chat
+      ));
       fetchStats();
     }
   }, [lastUpdate, fetchStats]);
+
+  // Начальная загрузка статистики
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const selectChat = useCallback(async (chatId: number) => {
     if (isSelectingChat.current) return;

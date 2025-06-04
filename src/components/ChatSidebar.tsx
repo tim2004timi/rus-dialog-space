@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Chat, getChats } from '@/lib/api';
-import { CircleDot, MessageSquare } from 'lucide-react';
+import { CircleDot, MessageSquare, Send } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useChat } from '@/contexts/ChatContext';
 
@@ -137,14 +137,18 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
     >
       <div className="mr-3 flex-shrink-0 mt-1">
         <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600">
-          {chat.uuid.charAt(0).toUpperCase()}
+          {chat.messager === 'telegram' ? (
+            <Send size={20} className="text-blue-500" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-gray-300" />
+          )}
         </div>
       </div>
       
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-medium text-gray-900 truncate">
-            Чат #{chat.uuid}
+            {chat.name || `Чат #${chat.uuid}`}
           </h3>
           <span className="text-xs text-gray-500">
             {chat.lastMessageTime && formatTime(chat.lastMessageTime)}

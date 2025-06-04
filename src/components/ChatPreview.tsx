@@ -6,6 +6,7 @@ interface ChatPreviewProps {
     ai: boolean;
     lastMessage?: string;
     lastMessageTime?: string;
+    name?: string;
   };
   isSelected: boolean;
   onClick: () => void;
@@ -39,7 +40,7 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-medium text-gray-900 truncate">
-            Чат #{chat.uuid}
+            {chat.name || `Чат #${chat.uuid}`}
           </h3>
           <span className="text-xs text-gray-500">
             {chat.lastMessageTime && formatTime(chat.lastMessageTime)}

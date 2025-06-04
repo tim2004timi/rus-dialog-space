@@ -147,7 +147,10 @@ export const toggleAiChat = async (chatId: number, aiEnabled: boolean): Promise<
       id: chat.id,
       uuid: chat.uuid,
       waiting: chat.waiting,
-      ai: chat.ai
+      ai: chat.ai,
+      name: chat.name,
+      tags: chat.tags,
+      messager: chat.messager
     };
   } catch (error) {
     console.error('Error toggling AI status:', error);
@@ -211,6 +214,49 @@ export const deleteChat = async (chatId: number | string): Promise<void> => {
   } catch (error) {
     console.error('Error deleting chat:', error);
     toast.error('Не удалось удалить чат');
+    throw error;
+  }
+};
+
+// Add tag to chat
+export const addChatTag = async (chatId: number, tag: string): Promise<{ success: boolean; tags: string[] }> => {
+  try {
+    const response = await fetch(`${API_URL}/chats/${chatId}/tags`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ tag }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to add tag');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error adding tag:', error);
+    toast.error('Не удалось добавить тег');
+    throw error;
+  }
+};
+
+// Remove tag from chat
+export const removeChatTag = async (chatId: number, tag: string): Promise<{ success: boolean; tags: string[] }> => {
+  try {
+    const response = await fetch(`${API_URL}/chats/${chatId}/tags/${encodeURIComponent(tag)}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to remove tag');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error removing tag:', error);
+    toast.error('Не удалось удалить тег');
     throw error;
   }
 };
