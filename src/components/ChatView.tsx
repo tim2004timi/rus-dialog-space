@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Message, Chat, getChatMessages, sendMessage, toggleAiChat, markChatAsRead, deleteChat, API_URL } from '@/lib/api';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Message, Chat, getChatMessages, sendMessage as apiSendMessage, toggleAiChat, markChatAsRead, deleteChat, API_URL } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -25,22 +25,19 @@ interface ChatViewProps {
 }
 
 const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [newMessage, setNewMessage] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [chatInfo, setChatInfo] = useState<Chat | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const { lastMessage, sendMessage: wsSendMessage } = useWebSocket();
-  const { markChatAsRead: markChatAsReadFromContext, refreshChats } = useChat();
 
-  console.log('ChatView rendering with chatId:', chatId);
+  const { sendMessage: wsSendMessage } = useWebSocket();
+  const { messages, loading: chatContextLoading, selectedChat, markChatAsRead: markChatAsReadFromContext, refreshChats, sendMessage } = useChat();
+
+  console.log('ChatView rendering with chatId:', chatId, 'messages from context:', messages.length);
 
   // Format timestamp for display
   const formatMessageTime = (timestamp: string) => {
@@ -54,153 +51,71 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     }).replace(',', '');
   };
 
-  const fetchChatInfo = async () => {
+  const fetchChatInfo = useCallback(async () => {
     if (!chatId) return;
     setError(null);
     try {
-      // First try to get chat by ID
-      const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
-      if (chatResponse.ok) {
-        const chatData = await chatResponse.json();
-        setAiEnabled(chatData.ai);
-        setChatInfo(chatData);
-      } else {
-        if (chatResponse.status === 400 || chatResponse.status === 404) {
-          setError('Чат не найден или недоступен.');
-          setChatInfo(null);
-          setMessages([]);
-          return;
-        }
-        // If not found by ID, try to get chat by UUID
-        const chatsResponse = await fetch(`${API_URL}/chats`);
-        if (chatsResponse.ok) {
-          const chats = await chatsResponse.json();
-          const chat = chats.find((c: Chat) => 
-            c.id === Number(chatId) || c.uuid === String(chatId)
-          );
-          if (chat) {
-            setAiEnabled(chat.ai);
-            setChatInfo(chat);
-          } else {
-            setError('Чат не найден или недоступен.');
-            setChatInfo(null);
-            setMessages([]);
-          }
-        }
+      // Fetch chat info directly if chatId is available
+      const response = await fetch(`${API_URL}/chats/${chatId}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Чат не найден или недоступен.');
+        setChatInfo(null);
+        return;
       }
+      const chatData = await response.json();
+      setAiEnabled(chatData.ai);
+      setChatInfo(chatData);
+
+      // Fetch all messages for the chat when chat info is loaded
+      const messagesData = await getChatMessages(chatData.id); // Fetch all messages
+      // Note: messages are added to context state via selectChat, not here directly
+
     } catch (error) {
       setError('Ошибка при загрузке чата.');
       setChatInfo(null);
-      setMessages([]);
       console.error('Failed to fetch chat info:', error, 'chatId:', chatId);
-    }
-  };
-
-  const fetchMessages = async () => {
-    if (!chatId) return;
-    setError(null);
-    try {
-      setLoading(true);
-      setPage(1);
-      let messagesData;
-      let chatData;
-      const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
-      if (chatResponse.ok) {
-        chatData = await chatResponse.json();
-        messagesData = await getChatMessages(chatData.id, 1, 50);
-      } else {
-        if (chatResponse.status === 400 || chatResponse.status === 404) {
-          setError('Чат не найден или недоступен.');
-          setChatInfo(null);
-          setMessages([]);
-          return;
-        }
-        const chatsResponse = await fetch(`${API_URL}/chats`);
-        if (chatsResponse.ok) {
-          const chats = await chatsResponse.json();
-          chatData = chats.find((c: Chat) => 
-            c.id === Number(chatId) || c.uuid === String(chatId)
-          );
-          if (chatData) {
-            messagesData = await getChatMessages(chatData.id, 1, 50);
-          } else {
-            setError('Чат не найден или недоступен.');
-            setChatInfo(null);
-            setMessages([]);
-            return;
-          }
-        }
-      }
-      if (messagesData) {
-        setMessages(messagesData);
-        setHasMore(messagesData.length === 50);
-        setPage(1);
-        if (chatData) {
-          setAiEnabled(chatData.ai);
-          setChatInfo(chatData);
-        }
-      }
-    } catch (error) {
-      setError('Ошибка при загрузке сообщений.');
-      setChatInfo(null);
-      setMessages([]);
-      console.error('Failed to fetch messages:', error, 'chatId:', chatId);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchMoreMessages = async () => {
-    if (!chatId || isLoadingMore || !hasMore) return;
-    setIsLoadingMore(true);
-    try {
-      const container = messagesContainerRef.current;
-      const prevScrollHeight = container ? container.scrollHeight : 0;
-
-      const nextPage = page + 1;
-      const chatResponse = await fetch(`${API_URL}/chats/${chatId}`);
-      let chatData = null;
-      if (chatResponse.ok) {
-        chatData = await chatResponse.json();
-      }
-      if (chatData) {
-        const moreMessages: Message[] = await getChatMessages(chatData.id, nextPage, 50);
-        // Фильтруем сообщения без контента и дубликаты
-        setMessages(prev => [
-          ...moreMessages.filter(msg => !!msg.content && msg.content !== 'undefined' && !prev.some(p => p.timestamp === msg.timestamp && p.content === msg.content)),
-          ...prev
-        ]);
-        setHasMore(moreMessages.length === 50);
-        setPage(nextPage);
-        // Восстанавливаем скролл
-        setTimeout(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - prevScrollHeight;
-          }
-        }, 0);
-      }
-    } catch (error) {
-      console.error('Ошибка при подгрузке сообщений:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const handleScroll = () => {
-    if (!messagesContainerRef.current) return;
-    if (messagesContainerRef.current.scrollTop === 0 && hasMore && !isLoadingMore) {
-      fetchMoreMessages();
-    }
-  };
-
-  useEffect(() => {
-    console.log('ChatView effect: chatId:', chatId, 'chatInfo:', chatInfo);
-    if (chatId) {
-      fetchMessages();
     }
   }, [chatId]);
 
+  useEffect(() => {
+    console.log('ChatView effect: chatId changed to', chatId);
+    // When chatId changes, fetch chat info and messages
+    if (chatId) {
+      fetchChatInfo();
+      // Messages are now loaded by ChatContext when selectChat is called.
+      // Ensure selectChat is called in the parent component when chatId changes.
+
+    } else {
+      setChatInfo(null);
+    }
+  }, [chatId, fetchChatInfo]);
+
+  // Send waiting=false periodically when chat is open
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    if (chatId) {
+      // Send immediately on chat open
+      markChatAsReadFromContext(chatId);
+
+      // Set interval for subsequent calls
+      intervalId = setInterval(() => {
+        console.log(`Marking chat ${chatId} as read periodically...`);
+        markChatAsReadFromContext(chatId);
+      }, 3000); // Send every 3 seconds
+    }
+
+    // Cleanup function to clear interval
+    return () => {
+      console.log(`Clearing interval for chat ${chatId}`);
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [chatId, markChatAsReadFromContext]); // Re-run effect if chatId or markChatAsReadFromContext changes
+
+  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -211,22 +126,9 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatId || !newMessage.trim()) return;
+    if (!newMessage.trim() || !selectedChat) return;
     try {
-      const savedMessage = await sendMessage(chatId, newMessage, false);
-      const formattedMessage: Message = {
-        chatId: savedMessage.chat_id?.toString() || chatId.toString(),
-        content: savedMessage.message,
-        message_type: savedMessage.message_type || 'text',
-        ai: typeof savedMessage.ai === 'boolean' ? savedMessage.ai : false,
-        timestamp: savedMessage.created_at || ''
-      };
-      setMessages(prev => [...prev, formattedMessage]);
-      if (chatId) {
-        markChatAsReadFromContext(chatId);
-      }
-      setChatInfo(prev => prev ? { ...prev, waiting: false } : null);
-      wsSendMessage({ chat_id: chatInfo?.uuid, message: newMessage });
+      await sendMessage(newMessage);
       setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -245,8 +147,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       toast.success(checked ? 'ИИ включен для этого чата' : 'ИИ отключен для этого чата');
     } catch (error) {
       console.error('Failed to toggle AI status:', error);
-      // Revert UI state on error
-      await fetchChatInfo();
+      fetchChatInfo();
     }
   };
 
@@ -263,6 +164,13 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       console.error('Failed to delete chat:', error);
     }
   };
+
+  useEffect(() => {
+    if (selectedChat && selectedChat.id === chatId) {
+      setChatInfo(selectedChat);
+      setAiEnabled(selectedChat.ai);
+    }
+  }, [selectedChat, chatId]);
 
   if (!chatId) {
     return (
@@ -285,6 +193,8 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       </div>
     );
   }
+
+  const displayLoading = chatContextLoading && messages.length === 0;
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -321,8 +231,8 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       </div>
       
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50" ref={messagesContainerRef} onScroll={handleScroll}>
-        {loading && messages.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-50" ref={messagesContainerRef}>
+        {displayLoading ? (
           <div className="flex justify-center p-4">
             <p className="text-gray-500">Загрузка сообщений...</p>
           </div>
@@ -332,16 +242,11 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
           </div>
         ) : (
           <>
-            {isLoadingMore && (
-              <div className="flex justify-center p-2">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-400"></div>
-              </div>
-            )}
             {[...messages]
-              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
               .map((message, index) => (
                 <MessageBubble 
-                  key={message.timestamp + '-' + index}
+                  key={message.id || index}
                   message={message}
                   formatTime={formatMessageTime}
                 />
@@ -411,10 +316,10 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
             </div>
           )}
         </div>
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <p className="whitespace-pre-wrap break-words">{message.message}</p>
         <div className="text-right mt-1">
           <span className={`text-xs ${isQuestion ? 'text-gray-500' : 'text-gray-300'}`}>
-            {formatTime(message.timestamp)}
+            {formatTime(message.created_at)}
           </span>
         </div>
       </div>

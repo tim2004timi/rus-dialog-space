@@ -54,19 +54,20 @@ export const getChats = async (): Promise<Chat[]> => {
 };
 
 // Get messages for a specific chat
-export const getChatMessages = async (chatId: number | string, page: number = 1, limit: number = 50): Promise<Message[]> => {
+export const getChatMessages = async (chatId: number | string): Promise<Message[]> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/messages?page=${page}&limit=${limit}`);
+    const response = await fetch(`${API_URL}/chats/${chatId}/messages`);
     if (!response.ok) {
       throw new Error('Failed to fetch messages');
     }
     const messages = await response.json();
     return messages.map((msg: any) => ({
-      chatId: msg.chatId || msg.chat_id?.toString() || chatId.toString(),
-      content: msg.content || msg.message,
+      id: msg.id,
+      chat_id: Number(msg.chatId || msg.chat_id),
+      created_at: msg.created_at || msg.timestamp || '',
+      message: msg.message || msg.content || '',
       message_type: msg.message_type || 'text',
       ai: typeof msg.ai === 'boolean' ? msg.ai : false,
-      timestamp: msg.timestamp || msg.created_at || ''
     }));
   } catch (error) {
     console.error('Error fetching messages:', error);

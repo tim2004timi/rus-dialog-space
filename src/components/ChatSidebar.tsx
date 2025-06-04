@@ -13,7 +13,7 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
   const { chats, loading, unreadCount, selectedChat } = useChat();
 
   // Log chats every render
-  console.log('Rendering sidebar with chats:', chats);
+  console.log('Sidebar render. Chats count:', chats.length);
 
   // Only render chats with valid id and in validChatIds
   let validChats = chats.filter(chat => typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined);
@@ -26,10 +26,10 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
         .map(chat => chat.id);
       
       // If we have new chat IDs that aren't in validChatIds, update the parent
-      const hasNewChats = newChatIds.some(id => !validChatIds.includes(id));
+      const hasNewChats = newChatIds.some(id => validChatIds && !validChatIds.includes(id));
       if (hasNewChats) {
-        console.log('New chat IDs detected, updating parent:', newChatIds);
-        onSelectChat(selectedChat?.id); // This will trigger a re-render with updated validChatIds
+        console.log('Sidebar: New chat IDs detected, updating parent.');
+        onSelectChat(selectedChat?.id || null); // Pass null if selectedChat is null
       }
     }
   }, [chats, validChatIds, selectedChat, onSelectChat]);
@@ -37,12 +37,11 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
   const waitingChats = validChats.filter(chat => chat.waiting);
   const regularChats = validChats.filter(chat => !chat.waiting);
 
-  console.log('Filtered chats:', {
-    all: chats,
-    valid: validChats,
-    waiting: waitingChats,
-    regular: regularChats,
-    validChatIds
+  console.log('Sidebar filtered counts:', {
+    all: chats.length,
+    valid: validChats.length,
+    waiting: waitingChats.length,
+    regular: regularChats.length,
   });
 
   return (
