@@ -1,9 +1,10 @@
 export interface Message {
-  chatId: string;
-  content: string;
-  message_type: 'text';
+  id: number;
+  chat_id: number;
+  created_at: string;
+  message: string;
+  message_type: 'question' | 'answer' | 'text';
   ai: boolean;
-  timestamp: string;
 }
 
 export interface Chat {
@@ -17,10 +18,16 @@ export interface Chat {
 }
 
 export interface WebSocketMessage {
-  type: 'message' | 'update';
-  chatId: string;
-  content: string;
-  message_type: string;
-  ai: boolean;
-  timestamp: string;
+  type: 'message' | 'update' | 'status_update' | 'chat_deleted' | 'chat_ai_updated';
+  chatId: number;
+  content?: string;
+  message_type?: string;
+  ai?: boolean;
+  timestamp?: string;
+  id?: number;
+  chat?: {
+    id: number;
+    uuid: string;
+    waiting: boolean;
+  };
 } 

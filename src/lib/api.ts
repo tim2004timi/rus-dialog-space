@@ -9,6 +9,9 @@ export interface Chat {
   uuid: string;
   waiting: boolean;
   ai: boolean;
+  name: string;
+  tags: string[];
+  messager: string;
   lastMessage?: string;
   lastMessageTime?: string;
   unread?: boolean;
@@ -36,6 +39,9 @@ export const getChats = async (): Promise<Chat[]> => {
       uuid: chat.uuid,
       waiting: chat.waiting,
       ai: chat.ai,
+      name: chat.name,
+      tags: chat.tags,
+      messager: chat.messager,
       lastMessage: chat.last_message?.content || '',
       lastMessageTime: chat.last_message?.timestamp || '',
       unread: false // This should be implemented based on your business logic

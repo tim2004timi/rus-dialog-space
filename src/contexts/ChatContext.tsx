@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { Chat, Message, getChats, getChatMessages, sendMessage as apiSendMessage, markChatAsRead as apiMarkChatAsRead, getChatStats } from '@/lib/api';
 import { useWebSocket } from './WebSocketContext';
+import type { WebSocketMessage } from '@/types';
 
 interface ChatContextType {
   chats: Chat[];
@@ -24,7 +25,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [unreadCount, setUnreadCount] = useState(0);
   const { lastMessage, sendMessage: wsSendMessage, lastUpdate } = useWebSocket();
   const isSelectingChat = useRef(false);
+  const selectedChatRef = useRef<Chat | null>(null);
   const [stats, setStats] = useState<{ total: number; pending: number; ai: number }>({ total: 0, pending: 0, ai: 0 });
+
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
 
   const refreshChats = useCallback(async () => {
     try {
@@ -56,107 +62,78 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Handle WebSocket messages
   useEffect(() => {
+    // Log 1: useEffect triggered with lastMessage
+    console.log('ChatContext useEffect triggered. lastMessage:', lastMessage);
+
     if (!lastMessage) return;
 
-    console.log('WebSocket message received:', lastMessage);
+    // Use a more specific type if possible, or be cautious with casting
+    const wsMsg = lastMessage as unknown as WebSocketMessage;
 
-    if (lastMessage.type === 'status_update' && lastMessage.chat) {
-      setChats(prevChats => {
-        const updatedChats = prevChats.map(chat => 
-          chat.id === lastMessage.chat.id 
-            ? { ...chat, waiting: lastMessage.chat.waiting }
-            : chat
-        );
-        
-        // Update unread count
-        const unread = updatedChats.filter(chat => chat.waiting).length;
-        setUnreadCount(unread);
-        
-        return updatedChats;
-      });
-    } 
-    // Handle new client messages or updates to existing chats (including manager replies)
-    else if (lastMessage.chat) {
-      setChats(prevChats => {
-        const existingChatIndex = prevChats.findIndex(c => c.uuid === lastMessage.chat.uuid);
-        const incomingChat = lastMessage.chat;
+    // Log 2: Checking message type
+    console.log('Checking WebSocket message type. type:', wsMsg.type);
 
-        if (existingChatIndex === -1) {
-          // New chat received
-          const newChat = {
-            ...incomingChat,
-            lastMessage: lastMessage.question?.message || '',
-            lastMessageTime: lastMessage.question?.created_at || new Date().toISOString(),
-            waiting: lastMessage.question ? true : incomingChat.waiting
-          };
-
-          // Update unread count if it's a new client message
-          if (lastMessage.question) {
-            setUnreadCount(prev => prev + 1);
-          }
-
-          // Add the new chat to the beginning of the list
-          return [newChat, ...prevChats];
-
-        } else {
-          // Update existing chat
-          const updatedChats = [...prevChats];
-          const existingChat = updatedChats[existingChatIndex];
-
-          // Update chat details, including the waiting status from the incoming message
-          updatedChats[existingChatIndex] = {
-            ...existingChat,
-            ...incomingChat,
-            lastMessage: lastMessage.question?.message || lastMessage.answer?.message || existingChat.lastMessage,
-            lastMessageTime: lastMessage.question?.created_at || lastMessage.answer?.created_at || existingChat.lastMessageTime,
-            waiting: incomingChat.waiting
-          };
-
-          // Recalculate unread count based on the updated list
-          const unread = updatedChats.filter(chat => chat.waiting).length;
-          setUnreadCount(unread);
-
-          // Optionally, move the updated chat to the top of the list
-          const [movedChat] = updatedChats.splice(existingChatIndex, 1);
-          console.log('Chats after WebSocket update:', [movedChat, ...updatedChats]);
-          return [movedChat, ...updatedChats];
-        }
+    // Обработка сообщений типа 'message' и 'update' (для новых сообщений и обновлений последнего сообщения в списке)
+    if (wsMsg.type === 'message' || wsMsg.type === 'update') {
+      // Log 3: Message type is message or update. Checking selected chat.
+      console.log('Message type is message or update. Checking selected chat.');
+      
+      // **Используем значение из ref для сравнения**
+      const currentSelectedChat = selectedChatRef.current;
+      console.log('Comparing:', {
+        selectedChatId: currentSelectedChat?.id, // Логируем ID выбранного чата из ref
+        wsMsgChatId: wsMsg.chatId,
+        comparisonResult: currentSelectedChat && currentSelectedChat.id === wsMsg.chatId
       });
 
-      // If this is the selected chat, update messages
-      if (selectedChat?.uuid === lastMessage.chat.uuid) {
-         // Add new message if it exists in the payload
-        setMessages(prev => {
-          let updatedMessages = [...prev];
-          const newMessageData = lastMessage.question || lastMessage.answer;
-          if (newMessageData) {
-             const exists = updatedMessages.some(m => m.id === newMessageData.id);
-             if (!exists) {
-               const messageType = lastMessage.question ? 'question' : 'answer';
-               const newMsg: Message = {
-                 id: newMessageData.id,
-                 chat_id: lastMessage.chat.id,
-                 created_at: newMessageData.created_at,
-                 message: newMessageData.message,
-                 message_type: messageType as 'question' | 'answer',
-                 ai: !!newMessageData.ai
-               };
-               updatedMessages.push(newMsg);
-             }
+      // Если это чат, который сейчас открыт — добавляем сообщение в messages
+      // Убедимся, что wsMsg.chatId - число, так как selectedChat.id - число
+      if (currentSelectedChat && currentSelectedChat.id === Number(wsMsg.chatId)) { // Сравниваем по id из БД
+        // Log 4: Chat is selected and matches message chatId. Updating messages.
+        console.log('Selected chat matches message chatId. Updating messages.', wsMsg);
+
+        // Создаем объект сообщения, убедившись, что он соответствует типу Message
+        const newMessage: Message = {
+            id: wsMsg.id ?? Date.now(), // Используем id из wsMsg или временный
+            chat_id: Number(wsMsg.chatId), // Убедимся, что это числовой ID чата
+            created_at: wsMsg.timestamp || new Date().toISOString(), // Используем timestamp
+            message: wsMsg.content || '', // Используем content
+            message_type: (wsMsg.message_type === 'question' ? 'question' : (wsMsg.message_type === 'answer' ? 'answer' : 'text')), // Уточняем тип
+            ai: wsMsg.ai ?? false, // Используем ai
           }
-           // Sort by time and type to ensure correct order
-           return updatedMessages.sort((a, b) => {
-             const timeA = new Date(a.created_at).getTime();
-             const timeB = new Date(b.created_at).getTime();
-             if (timeA === timeB) {
-               return a.message_type === 'question' ? -1 : 1; // Question before answer if same time
-             }
-             return timeA - timeB;
-           });
-        });
+
+        console.log('Adding new message to state:', newMessage);
+
+        setMessages(prev => [
+          ...prev,
+          newMessage
+        ]);
+        console.log('Messages updated. Current messages count (may be slightly behind): ', messages.length);
+      } else {
+        console.log('Selected chat does NOT match message chatId or selectedChat is null.');
       }
+
+      // В любом случае обновляем последнее сообщение в списке чатов
+      // Убедимся, что wsMsg.chatId - число для сравнения с chat.id
+      setChats(prevChats => prevChats.map(chat =>
+        chat.id === Number(wsMsg.chatId)
+          ? {
+              ...chat,
+              lastMessage: wsMsg.content || '', // Используем content
+              lastMessageTime: wsMsg.timestamp || chat.lastMessageTime, // Используем timestamp
+              // Возможно, нужно также обновить waiting статус, если он есть в wsMsg и важен для списка
+              // waiting: wsMsg.waiting ?? chat.waiting,
+            }
+          : chat
+      ));
+      console.log('Chats list updated.');
+      // return; // Не завершаем обработку, если есть другие типы сообщений, которые нужно обработать в этом useEffect
     }
-  }, [lastMessage, selectedChat]);
+
+    // Здесь может быть логика для других типов сообщений, если они появятся В ЭТОМ ЖЕ useEffect
+    // Если status_update и chat_deleted обрабатываются в другом useEffect, этот блок не нужен
+
+  }, [lastMessage, messages.length]); // Добавил messages.length в зависимости, чтобы видеть актуальное количество сообщений в логе после setMessages
 
   // Получение статистики
   const fetchStats = useCallback(async () => {
@@ -205,12 +182,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Set selected chat immediately to prevent UI lag
-      setSelectedChat(chat);
-      
       // Then fetch messages
       const messagesData = await getChatMessages(chatId);
       setMessages(messagesData);
+      
+      // Set selected chat AFTER messages are loaded
+      setSelectedChat(chat);
       
       // Mark as read if it was unread
       if (chat.waiting) {
@@ -240,7 +217,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newMessage = await apiSendMessage(selectedChat.id, message, false);
       setMessages(prev => [...prev, newMessage]);
-      wsSendMessage({ chat_id: selectedChat.uuid, message });
+      // При отправке используем selectedChat.id (ID из БД) для chat_id
+      wsSendMessage({
+        id: newMessage.id, // Используем id созданного сообщения
+        chat_id: selectedChat.id, // ID чата из БД
+        created_at: newMessage.created_at, // Используем timestamp созданного сообщения
+        message: message, // Содержимое сообщения
+        message_type: 'text', // Тип сообщения
+        ai: false // Это сообщение пользователя, не AI
+      });
     } catch (error) {
       console.error('Failed to send message:', error);
     }

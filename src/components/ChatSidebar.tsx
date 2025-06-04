@@ -1,17 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Chat, getChats } from '@/lib/api';
 import { CircleDot, MessageSquare } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useChat } from '@/contexts/ChatContext';
 
 interface ChatSidebarProps {
-  onSelectChat: (chatId: number) => void;
-  selectedChatId: number | null;
+  onSelectChat: (chatId: number | null) => void;
   validChatIds?: number[];
 }
 
-const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebarProps) => {
-  const { chats, loading, unreadCount } = useChat();
+const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
+  const { chats, loading, unreadCount, selectedChat } = useChat();
 
   // Log chats every render
   console.log('Rendering sidebar with chats:', chats);
@@ -30,10 +29,10 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
       const hasNewChats = newChatIds.some(id => !validChatIds.includes(id));
       if (hasNewChats) {
         console.log('New chat IDs detected, updating parent:', newChatIds);
-        onSelectChat(selectedChatId); // This will trigger a re-render with updated validChatIds
+        onSelectChat(selectedChat?.id); // This will trigger a re-render with updated validChatIds
       }
     }
-  }, [chats, validChatIds, selectedChatId, onSelectChat]);
+  }, [chats, validChatIds, selectedChat, onSelectChat]);
 
   const waitingChats = validChats.filter(chat => chat.waiting);
   const regularChats = validChats.filter(chat => !chat.waiting);
@@ -66,11 +65,11 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
                   Ожидают ответа
                 </div>
                 
-                {waitingChats.map(chat => (
+                {waitingChats.map((chat) => (
                   <ChatPreview 
-                    key={chat.uuid} 
+                    key={chat.id}
                     chat={chat} 
-                    isSelected={selectedChatId === chat.id} 
+                    isSelected={selectedChat?.id === chat.id} 
                     onClick={() => {
                       console.log('Sidebar selecting chat:', chat);
                       onSelectChat(chat.id);
@@ -88,11 +87,11 @@ const ChatSidebar = ({ onSelectChat, selectedChatId, validChatIds }: ChatSidebar
                 </div>
               )}
               
-              {regularChats.map(chat => (
+              {regularChats.map((chat) => (
                 <ChatPreview 
-                  key={chat.uuid} 
+                  key={chat.id}
                   chat={chat} 
-                  isSelected={selectedChatId === chat.id} 
+                  isSelected={selectedChat?.id === chat.id} 
                   onClick={() => {
                     console.log('Sidebar selecting chat:', chat);
                     onSelectChat(chat.id);
