@@ -7,6 +7,7 @@ interface ChatPreviewProps {
     lastMessage?: string;
     lastMessageTime?: string;
     name?: string;
+    tags?: string[];
   };
   isSelected: boolean;
   onClick: () => void;
@@ -46,6 +47,19 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
             {chat.lastMessageTime && formatTime(chat.lastMessageTime)}
           </span>
         </div>
+        
+        {chat.tags && chat.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {chat.tags.map((tag) => (
+              <span
+                key={tag}
+                className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
         
         <div className="flex items-center justify-between mt-1">
           <p className="text-sm text-gray-500 truncate">

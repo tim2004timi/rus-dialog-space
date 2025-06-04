@@ -12,6 +12,9 @@ export interface Chat {
   uuid: string;
   waiting: boolean;
   ai: boolean;
+  name: string;
+  tags: string[];
+  messager: string;
   lastMessage?: string;
   lastMessageTime?: string;
   unread?: boolean;

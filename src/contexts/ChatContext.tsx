@@ -205,6 +205,21 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Обновляем статистику при изменении статуса чата
         fetchStats();
+      } else if (data.type === 'chat_tags_updated' && data.chatId && data.tags) {
+        // Handle chat tags updated
+        console.log('WS processing [chat_tags_updated]:', data); // Log tag update data
+
+        setChats(prevChats => {
+          const updatedChats = prevChats.map(chat =>
+            chat.id === data.chatId
+              ? { ...chat, tags: data.tags }
+              : chat
+          );
+          // Ensure a new array reference is returned to trigger updates
+          const newChatsArray = [...updatedChats];
+          console.log('WS chats list updated [chat_tags_updated]:', newChatsArray); // Log state update
+          return newChatsArray;
+        });
       }
     } catch (error) {
       console.error('WS error processing lastUpdate:', error);

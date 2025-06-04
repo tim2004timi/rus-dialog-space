@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Chat, getChats } from '@/lib/api';
-import { CircleDot, MessageSquare, Send } from 'lucide-react';
+import { CircleDot, MessageSquare, Send, Search } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useChat } from '@/contexts/ChatContext';
+import { Input } from '@/components/ui/input';
 
 interface ChatSidebarProps {
   onSelectChat: (chatId: number | null) => void;
@@ -11,12 +12,21 @@ interface ChatSidebarProps {
 
 const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
   const { chats, loading, unreadCount, selectedChat } = useChat();
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Log chats every render
   console.log('Sidebar render. Chats count:', chats.length);
 
-  // Only render chats with valid id and in validChatIds
-  let validChats = chats.filter(chat => typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined);
+  // Filter chats based on search query and validChatIds
+  const filteredChats = chats.filter(chat => {
+    const matchesSearch = chat.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         chat.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         chat.tags?.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    const isValidId = validChatIds ? typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined && validChatIds.includes(chat.id) : true;
+
+    return matchesSearch && isValidId;
+  });
   
   // Update validChatIds when new chats are added
   useEffect(() => {
@@ -34,12 +44,12 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
     }
   }, [chats, validChatIds, selectedChat, onSelectChat]);
 
-  const waitingChats = validChats.filter(chat => chat.waiting);
-  const regularChats = validChats.filter(chat => !chat.waiting);
+  const waitingChats = filteredChats.filter(chat => chat.waiting);
+  const regularChats = filteredChats.filter(chat => !chat.waiting);
 
   console.log('Sidebar filtered counts:', {
     all: chats.length,
-    valid: validChats.length,
+    valid: filteredChats.length,
     waiting: waitingChats.length,
     regular: regularChats.length,
   });
@@ -48,7 +58,19 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
       {/* Chat List Header */}
       <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">Сообщения</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-800">Сообщения</h2>
+          <div className="relative w-40">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+            <Input
+              type="text"
+              placeholder="Поиск по чатам и тегам..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-full"
+            />
+          </div>
+        </div>
       </div>
       
       {/* Chat List */}
@@ -99,7 +121,7 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
               ))}
             </div>
             
-            {chats.length === 0 && (
+            {filteredChats.length === 0 && (
               <div className="p-4 text-center text-gray-500">Нет доступных чатов</div>
             )}
           </>
@@ -117,13 +139,13 @@ interface ChatPreviewProps {
 
 const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
   console.log('Rendering ChatPreview for chat:', chat);
-  const truncateMessage = (message: string, maxLength: number = 30) => {
+  const truncateMessage = (message: string | undefined, maxLength: number = 30) => {
     if (!message) return 'Нет сообщений';
     return message.length > maxLength ? message.substring(0, maxLength) + '...' : message;
   };
   
   // Format timestamp
-  const formatTime = (timestamp: string) => {
+  const formatTime = (timestamp: string | undefined) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -139,24 +161,36 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
           {chat.messager === 'telegram' ? (
             <Send size={20} className="text-blue-500" />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-gray-300" />
+            <MessageSquare size={20} className="text-gray-500" />
           )}
         </div>
       </div>
       
       <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-center">
+        <div className="flex items-center">
           <h3 className="text-sm font-medium text-gray-900 truncate">
             {chat.name || `Чат #${chat.uuid}`}
           </h3>
-          <span className="text-xs text-gray-500">
+          {chat.tags && chat.tags.length > 0 && (
+            <div className="flex gap-1 ml-2 overflow-hidden">
+              {chat.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded flex-shrink-0"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          <span className="text-xs text-gray-500 ml-auto flex-shrink-0">
             {chat.lastMessageTime && formatTime(chat.lastMessageTime)}
           </span>
         </div>
         
         <div className="flex items-center justify-between mt-1">
           <p className="text-sm text-gray-500 truncate">
-            {truncateMessage(chat.lastMessage || '')}
+            {truncateMessage(chat.lastMessage)}
           </p>
           
           <div className="flex items-center ml-2">
