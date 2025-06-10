@@ -179,30 +179,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetchStats();
       } else if (data.type === 'chat_update') { // Handling chat_update here
         console.log('WS processing [chat_update]:', data); // Log chat_update processing
-        
-        // Update selected chat if it's the one being updated
-        if (selectedChatRef.current?.id === data.chat_id) {
-          setSelectedChat(prev => {
-            if (prev) {
-              return { ...prev, waiting: data.waiting };
-            }
-            return prev;
-          });
-        }
-
-        // Update chats list
-        setChats(prevChats => {
-          const updatedChats = prevChats.map(chat =>
-            chat.id === data.chat_id
-              ? { ...chat, waiting: data.waiting }
-              : chat
-          );
-          // Ensure a new array reference is returned to trigger updates
-          const newChatsArray = [...updatedChats];
-          console.log('WS chats list updated [chat_update]:', newChatsArray); // Log state update
-          return newChatsArray;
-        });
-
+        setChats(prevChats => prevChats.map(chat => 
+          String(chat.id) === String(data.chat_id) 
+            ? { 
+                ...chat, 
+                waiting: data.waiting,
+                ai: data.ai // Add ai status update
+              } 
+            : chat
+        ));
         // Обновляем статистику при изменении статуса чата
         fetchStats();
       } else if (data.type === 'chat_tags_updated' && data.chatId && data.tags) {
