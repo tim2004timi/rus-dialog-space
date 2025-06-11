@@ -35,16 +35,16 @@ export const getChats = async (): Promise<Chat[]> => {
     }
     const chats = await response.json();
     return chats.map((chat: any) => ({
-      id: chat.id,
-      uuid: chat.uuid,
-      waiting: chat.waiting,
-      ai: chat.ai,
+          id: chat.id,
+          uuid: chat.uuid,
+          waiting: chat.waiting,
+          ai: chat.ai,
       name: chat.name,
       tags: chat.tags,
       messager: chat.messager,
       lastMessage: chat.last_message?.content || '',
       lastMessageTime: chat.last_message?.timestamp || '',
-      unread: false // This should be implemented based on your business logic
+          unread: false // This should be implemented based on your business logic
     }));
   } catch (error) {
     console.error('Error fetching chats:', error);

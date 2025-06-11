@@ -60,9 +60,9 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       if (!response.ok) {
         const errorData = await response.json();
         setError(errorData.detail || 'Чат не найден или недоступен.');
-        setChatInfo(null);
-        return;
-      }
+          setChatInfo(null);
+          return;
+        }
       const chatData = await response.json();
       setAiEnabled(chatData.ai);
       setChatInfo(chatData);
@@ -245,11 +245,11 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
             {[...messages]
               .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
               .map((message, index) => (
-                <MessageBubble 
+            <MessageBubble 
                   key={message.id || index}
-                  message={message}
-                  formatTime={formatMessageTime}
-                />
+              message={message} 
+              formatTime={formatMessageTime}
+            />
               ))}
           </>
         )}

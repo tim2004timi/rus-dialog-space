@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Message } from '../types';
+import { config } from '../config';
 
 interface WebSocketContextType {
   sendMessage: (message: Message) => void;
@@ -25,7 +26,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:3001/ws/messages');
+    const socket = new WebSocket(`${config.wsUrl}/messages`);
     socket.onopen = () => {
       console.log('WebSocket connected');
       setIsConnected(true);
@@ -55,7 +56,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:3001/ws/updates');
+    const socket = new WebSocket(`${config.wsUrl}/updates`);
     socket.onopen = () => {};
     socket.onclose = () => {
       console.log('Updates WebSocket disconnected');
