@@ -5,6 +5,7 @@ export interface Message {
   message: string;
   message_type: 'question' | 'answer' | 'text';
   ai: boolean;
+  is_image?: boolean;
 }
 
 export interface Chat {

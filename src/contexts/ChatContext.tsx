@@ -25,6 +25,7 @@ interface IncomingMessageWebSocket {
     ai: boolean;
     timestamp: string;
     id: number;
+    is_image?: boolean;
 }
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -119,6 +120,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             message: wsMsgTyped.content,
             message_type: wsMsgTyped.message_type === 'question' ? 'question' : 'answer', // Ensure valid type
             ai: wsMsgTyped.ai,
+            is_image: wsMsgTyped.is_image || false,
           };
 
           setMessages(prevMessages => [...prevMessages, newMessage]);
@@ -276,7 +278,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: newMessage.created_at, // Используем timestamp созданного сообщения
         message: message, // Содержимое сообщения
         message_type: 'text', // Тип сообщения
-        ai: false // Это сообщение пользователя, не AI
+        ai: false, // Это сообщение пользователя, не AI
+        is_image: false, // Default value, as the original code didn't include is_image
       });
     } catch (error) {
       console.error('Failed to send message:', error);

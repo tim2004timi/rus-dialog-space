@@ -24,6 +24,7 @@ export interface Message {
   message: string;
   message_type: 'question' | 'answer';
   ai: boolean;
+  is_image: boolean;
 }
 
 // Get all chats
@@ -68,6 +69,7 @@ export const getChatMessages = async (chatId: number | string): Promise<Message[
       message: msg.message || msg.content || '',
       message_type: msg.message_type || 'text',
       ai: typeof msg.ai === 'boolean' ? msg.ai : false,
+      is_image: msg.is_image || false,
     }));
   } catch (error) {
     console.error('Error fetching messages:', error);
@@ -113,7 +115,8 @@ export const sendMessage = async (chatId: number, message: string, isAi: boolean
       created_at: newMessage.created_at,
       message: newMessage.message,
       message_type: newMessage.message_type,
-      ai: newMessage.ai
+      ai: newMessage.ai,
+      is_image: newMessage.is_image || false,
     };
   } catch (error) {
     console.error('Error sending message:', error);

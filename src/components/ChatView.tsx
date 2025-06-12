@@ -3,7 +3,7 @@ import { Message, Chat, getChatMessages, sendMessage as apiSendMessage, toggleAi
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Send, Trash2 } from 'lucide-react';
+import { Send, Trash2, Paperclip } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import {
   AlertDialog,
@@ -33,6 +33,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { sendMessage: wsSendMessage } = useWebSocket();
   const { messages, loading: chatContextLoading, selectedChat, markChatAsRead: markChatAsReadFromContext, refreshChats, sendMessage } = useChat();
@@ -165,6 +166,39 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     }
   };
 
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedChat) return;
+
+    // Check if file is an image
+    if (!file.type.startsWith('image/')) {
+      toast.error('Пожалуйста, выберите изображение');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('chat_id', selectedChat.id.toString());
+
+      const response = await fetch(`${API_URL}/messages/image`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      const data = await response.json();
+      setNewMessage('');
+      toast.success('Изображение отправлено');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Не удалось отправить изображение');
+    }
+  };
+
   useEffect(() => {
     if (selectedChat && selectedChat.id === chatId) {
       setChatInfo(selectedChat);
@@ -231,7 +265,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       </div>
       
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50" ref={messagesContainerRef}>
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-50 messages-container" ref={messagesContainerRef}>
         {displayLoading ? (
           <div className="flex justify-center p-4">
             <p className="text-gray-500">Загрузка сообщений...</p>
@@ -245,11 +279,11 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
             {[...messages]
               .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
               .map((message, index) => (
-            <MessageBubble 
+                <MessageBubble 
                   key={message.id || index}
-              message={message} 
-              formatTime={formatMessageTime}
-            />
+                  message={message} 
+                  formatTime={formatMessageTime}
+                />
               ))}
           </>
         )}
@@ -259,13 +293,31 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       {/* Message Input */}
       <div className="border-t border-gray-200 px-4 py-3">
         <form onSubmit={handleSendMessage} className="flex space-x-2">
-          <Input
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Введите сообщение..."
-            className="flex-1 border-gray-300"
-            autoComplete="off"
-          />
+          <div className="relative flex-1">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Введите сообщение..."
+              className="flex-1 border-gray-300 pr-10"
+              autoComplete="off"
+            />
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept="image/*"
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-1/2 -translate-y-1/2"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip size={18} className="text-gray-500" />
+            </Button>
+          </div>
           <Button type="submit" disabled={!newMessage.trim()}>
             <Send size={18} className="mr-1" />
             Отправить
@@ -304,6 +356,20 @@ interface MessageBubbleProps {
 
 const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
   const isQuestion = message.message_type === 'question';
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (message.is_image && imageRef.current) {
+      imageRef.current.onload = () => {
+        // Scroll to bottom after image loads
+        const messagesContainer = document.querySelector('.messages-container');
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      };
+    }
+  }, [message.is_image]);
+
   return (
     <div className={`mb-4 flex ${isQuestion ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
@@ -316,7 +382,17 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
             </div>
           )}
         </div>
-        <p className="whitespace-pre-wrap break-words">{message.message}</p>
+        {message.is_image ? (
+          <img 
+            ref={imageRef}
+            src={message.message} 
+            alt="Uploaded image" 
+            className="max-w-full rounded-lg"
+            style={{ maxHeight: '300px' }}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{message.message}</p>
+        )}
         <div className="text-right mt-1">
           <span className={`text-xs ${isQuestion ? 'text-gray-500' : 'text-gray-300'}`}>
             {formatTime(message.created_at)}
