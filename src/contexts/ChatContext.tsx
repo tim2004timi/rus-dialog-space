@@ -125,7 +125,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           setMessages(prevMessages => [...prevMessages, newMessage]);
           console.log('WS messages state updated.'); // Log state update
-        }
+          }
 
         // Also update the last message preview in the chat list regardless of selected chat
         setChats(prevChats => {
@@ -206,7 +206,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const newChatsArray = [...updatedChats];
           console.log('WS chats list updated [chat_tags_updated]:', newChatsArray); // Log state update
           return newChatsArray;
-        });
+           });
       }
     } catch (error) {
       console.error('WS error processing lastUpdate:', error);
@@ -236,7 +236,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
       }
-
+      
       // Then fetch messages
       const messagesData = await getChatMessages(chatId);
       setMessages(messagesData);

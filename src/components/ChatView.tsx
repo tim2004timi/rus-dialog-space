@@ -279,11 +279,11 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
             {[...messages]
               .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
               .map((message, index) => (
-                <MessageBubble 
+            <MessageBubble 
                   key={message.id || index}
-                  message={message} 
-                  formatTime={formatMessageTime}
-                />
+              message={message} 
+              formatTime={formatMessageTime}
+            />
               ))}
           </>
         )}
@@ -294,13 +294,13 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       <div className="border-t border-gray-200 px-4 py-3">
         <form onSubmit={handleSendMessage} className="flex space-x-2">
           <div className="relative flex-1">
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Введите сообщение..."
+          <Input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Введите сообщение..."
               className="flex-1 border-gray-300 pr-10"
-              autoComplete="off"
-            />
+            autoComplete="off"
+          />
             <input
               type="file"
               ref={fileInputRef}
@@ -369,7 +369,7 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
       };
     }
   }, [message.is_image]);
-
+  
   return (
     <div className={`mb-4 flex ${isQuestion ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
@@ -391,7 +391,7 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
             style={{ maxHeight: '300px' }}
           />
         ) : (
-          <p className="whitespace-pre-wrap break-words">{message.message}</p>
+        <p className="whitespace-pre-wrap break-words">{message.message}</p>
         )}
         <div className="text-right mt-1">
           <span className={`text-xs ${isQuestion ? 'text-gray-500' : 'text-gray-300'}`}>
