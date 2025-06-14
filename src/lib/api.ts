@@ -254,13 +254,56 @@ export const removeChatTag = async (chatId: number, tag: string): Promise<{ succ
     });
     
     if (!response.ok) {
-      throw new Error('Failed to remove tag');
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to remove tag');
     }
     
     return await response.json();
   } catch (error) {
     console.error('Error removing tag:', error);
     toast.error('Не удалось удалить тег');
+    throw error;
+  }
+};
+
+// Get AI context
+export const getAiContext = async (): Promise<string> => {
+  try {
+    const response = await fetch(`${API_URL}/ai/context`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch AI context');
+    }
+    const data = await response.json();
+    return data.context || '';
+  } catch (error) {
+    console.error('Error fetching AI context:', error);
+    toast.error('Не удалось загрузить контекст ИИ');
+    return '';
+  }
+};
+
+// Put AI context
+export const putAiContext = async (context: string): Promise<string> => {
+  try {
+    const response = await fetch(`${API_URL}/ai/context`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ai_context: context }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to update AI context');
+    }
+    
+    const data = await response.json();
+    toast.success('Контекст ИИ успешно обновлен');
+    return data.context || '';
+  } catch (error) {
+    console.error('Error updating AI context:', error);
+    toast.error('Не удалось обновить контекст ИИ');
     throw error;
   }
 };

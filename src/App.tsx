@@ -7,6 +7,7 @@ import { WebSocketProvider } from './contexts/WebSocketContext';
 import { ChatProvider } from './contexts/ChatContext';
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import MessageBox from "./pages/MessageBox";
 
 console.log('App module loaded');
 
@@ -32,6 +33,7 @@ const App = () => {
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/message-box" element={<MessageBox />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

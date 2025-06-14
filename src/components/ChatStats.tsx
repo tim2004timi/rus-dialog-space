@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { getChatStats } from '@/lib/api';
-import { MessageSquare, Send, CircleDot } from 'lucide-react';
+import { MessageSquare, Send, CircleDot, Settings } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 const ChatStats = () => {
   const [stats, setStats] = useState({
@@ -11,6 +13,7 @@ const ChatStats = () => {
   });
   const [loading, setLoading] = useState(true);
   const { lastMessage, lastUpdate } = useWebSocket();
+  const navigate = useNavigate();
 
   const fetchStats = async () => {
     try {
@@ -62,6 +65,16 @@ const ChatStats = () => {
               <p className="text-xs text-gray-500">ИИ чаты</p>
               <p className="text-sm font-medium">{stats.ai}</p>
             </div>
+          </div>
+          <div className="ml-auto">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => navigate('/message-box')}
+              className="w-10 h-10 border-gray-300 hover:bg-gray-100"
+            >
+              <Settings size={20} />
+            </Button>
           </div>
         </div>
       )}
