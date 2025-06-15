@@ -7,14 +7,16 @@ import { toast } from '@/components/ui/sonner';
 
 const MessageBox = () => {
   const navigate = useNavigate();
-  const [context, setContext] = useState('');
+  const [systemMessage, setSystemMessage] = useState('');
+  const [faqs, setFaqs] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchContext = async () => {
       try {
-        const fetchedContext = await getAiContext();
-        setContext(fetchedContext);
+        const data = await getAiContext();
+        setSystemMessage(data.system_message || '');
+        setFaqs(data.faqs || '');
       } catch (error) {
         console.error('Failed to fetch AI context:', error);
         toast.error('Не удалось загрузить контекст ИИ.');
@@ -27,11 +29,11 @@ const MessageBox = () => {
 
   const handleSubmit = async () => {
     try {
-      await putAiContext(context);
-      toast.success('Контекст ИИ успешно отправлен!');
+      await putAiContext(systemMessage, faqs);
+      toast.success('Контекст и FAQ успешно отправлены!');
     } catch (error) {
-      console.error('Failed to send AI context:', error);
-      toast.error('Не удалось отправить контекст ИИ.');
+      console.error('Failed to send data:', error);
+      toast.error('Не удалось отправить данные.');
     }
   };
 
@@ -49,17 +51,32 @@ const MessageBox = () => {
           </Button>
         </div>
         
-        <div className="space-y-4">
-          {loading ? (
-            <div className="text-center text-gray-500">Загрузка контекста...</div>
-          ) : (
+        <div className="space-y-8">
+          {/* AI Context Section */}
+          <div className="space-y-4">
+            <label className="text-sm font-medium text-gray-700">Контекст ИИ</label>
+            {loading ? (
+              <div className="text-center text-gray-500">Загрузка контекста...</div>
+            ) : (
+              <Textarea
+                placeholder="Введите контекст для ИИ..."
+                className="min-h-[300px] p-4 text-base border-gray-200 focus:border-gray-400 focus:ring-gray-400"
+                value={systemMessage}
+                onChange={(e) => setSystemMessage(e.target.value)}
+              />
+            )}
+          </div>
+
+          {/* FAQs Section */}
+          <div className="space-y-4">
+            <label className="text-sm font-medium text-gray-700">Часто задаваемые вопросы</label>
             <Textarea
-              placeholder="Введите ваш контекст или сообщение здесь..."
-              className="min-h-[300px] p-4 text-base border-gray-200 focus:border-gray-400 focus:ring-gray-400"
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
+              placeholder="Введите часто задаваемые вопросы..."
+              className="min-h-[200px] p-4 text-base border-gray-200 focus:border-gray-400 focus:ring-gray-400"
+              value={faqs}
+              onChange={(e) => setFaqs(e.target.value)}
             />
-          )}
+          </div>
           
           <div className="flex justify-end">
             <Button
@@ -67,7 +84,7 @@ const MessageBox = () => {
               onClick={handleSubmit}
               disabled={loading}
             >
-              Отправить ИИ
+              Отправить
             </Button>
           </div>
         </div>

@@ -267,30 +267,36 @@ export const removeChatTag = async (chatId: number, tag: string): Promise<{ succ
 };
 
 // Get AI context
-export const getAiContext = async (): Promise<string> => {
+export const getAiContext = async (): Promise<{ system_message: string, faqs: string }> => {
   try {
     const response = await fetch(`${API_URL}/ai/context`);
     if (!response.ok) {
       throw new Error('Failed to fetch AI context');
     }
     const data = await response.json();
-    return data.context || '';
+    return {
+      system_message: data["system_message "] || '',
+      faqs: data.faqs || ''
+    };
   } catch (error) {
     console.error('Error fetching AI context:', error);
     toast.error('Не удалось загрузить контекст ИИ');
-    return '';
+    return { system_message: '', faqs: '' };
   }
 };
 
 // Put AI context
-export const putAiContext = async (context: string): Promise<string> => {
+export const putAiContext = async (system_message: string, faqs: string): Promise<{ system_message: string, faqs: string }> => {
   try {
     const response = await fetch(`${API_URL}/ai/context`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ ai_context: context }),
+      body: JSON.stringify({ 
+        system_message,
+        faqs
+      }),
     });
     
     if (!response.ok) {
@@ -300,7 +306,7 @@ export const putAiContext = async (context: string): Promise<string> => {
     
     const data = await response.json();
     toast.success('Контекст ИИ успешно обновлен');
-    return data.context || '';
+    return data;
   } catch (error) {
     console.error('Error updating AI context:', error);
     toast.error('Не удалось обновить контекст ИИ');
