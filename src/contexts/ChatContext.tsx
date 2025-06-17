@@ -9,6 +9,8 @@ interface ChatContextType {
   messages: Message[];
   loading: boolean;
   unreadCount: number;
+  shouldAutoScroll: boolean;
+  setShouldAutoScroll: (value: boolean) => void;
   selectChat: (chatId: number) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   refreshChats: () => Promise<void>;
@@ -34,6 +36,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const { lastMessage, sendMessage: wsSendMessage, lastUpdate } = useWebSocket();
   const isSelectingChat = useRef(false);
   const selectedChatRef = useRef<Chat | null>(null);
@@ -302,21 +305,21 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  return (
-    <ChatContext.Provider value={{
-      chats,
-      selectedChat,
-      messages,
-      loading,
-      unreadCount,
-      selectChat,
-      sendMessage,
-      refreshChats,
-      markChatAsRead
-    }}>
-      {children}
-    </ChatContext.Provider>
-  );
+  const value = {
+    chats,
+    selectedChat,
+    messages,
+    loading,
+    unreadCount,
+    shouldAutoScroll,
+    setShouldAutoScroll,
+    selectChat,
+    sendMessage,
+    refreshChats,
+    markChatAsRead,
+  };
+
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 };
 
 export const useChat = () => {

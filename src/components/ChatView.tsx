@@ -3,7 +3,7 @@ import { Message, Chat, getChatMessages, sendMessage as apiSendMessage, toggleAi
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Send, Trash2, Paperclip } from 'lucide-react';
+import { Send, Trash2, Paperclip, ArrowDown } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import {
   AlertDialog,
@@ -30,13 +30,27 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   const [chatInfo, setChatInfo] = useState<Chat | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNearBottom, setIsNearBottom] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { sendMessage: wsSendMessage } = useWebSocket();
-  const { messages, loading: chatContextLoading, selectedChat, markChatAsRead: markChatAsReadFromContext, refreshChats, sendMessage } = useChat();
+  const { 
+    messages, 
+    loading: chatContextLoading, 
+    selectedChat, 
+    markChatAsRead: markChatAsReadFromContext, 
+    refreshChats, 
+    sendMessage,
+    shouldAutoScroll,
+    setShouldAutoScroll
+  } = useChat();
+
+  // Track the last message timestamp we've seen
+  const lastSeenMessageRef = useRef<string>('');
 
   console.log('ChatView rendering with chatId:', chatId, 'messages from context:', messages.length);
 
@@ -116,13 +130,51 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     };
   }, [chatId, markChatAsReadFromContext]); // Re-run effect if chatId or markChatAsReadFromContext changes
 
+  // Check if user is near bottom of chat
+  const checkScrollPosition = useCallback(() => {
+    if (!messagesContainerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    const isNear = distanceFromBottom < 100; // Consider "near bottom" if within 100px
+    setIsNearBottom(isNear);
+    
+    // If user manually scrolls to bottom, clear unread count and update last seen
+    if (isNear && messages.length > 0) {
+      setUnreadCount(0);
+      setShouldAutoScroll(true);
+      lastSeenMessageRef.current = messages[messages.length - 1].created_at;
+    } else {
+      setShouldAutoScroll(false);
+    }
+  }, [setShouldAutoScroll, messages]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (shouldAutoScroll && isNearBottom) {
+      scrollToBottom();
+      // Update last seen message when auto-scrolling
+      if (messages.length > 0) {
+        lastSeenMessageRef.current = messages[messages.length - 1].created_at;
+      }
+    } else if (!isNearBottom && messages.length > 0) {
+      // Only increment unread count for messages newer than the last seen message
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.created_at > lastSeenMessageRef.current) {
+        setUnreadCount(prev => prev + 1);
+        lastSeenMessageRef.current = lastMessage.created_at;
+      }
+    }
+  }, [messages, shouldAutoScroll, isNearBottom]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setUnreadCount(0);
+    setShouldAutoScroll(true);
+    // Update last seen message when manually scrolling to bottom
+    if (messages.length > 0) {
+      lastSeenMessageRef.current = messages[messages.length - 1].created_at;
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -265,7 +317,11 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       </div>
       
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50 messages-container" ref={messagesContainerRef}>
+      <div 
+        className="flex-1 overflow-y-auto p-4 bg-gray-50 messages-container relative" 
+        ref={messagesContainerRef}
+        onScroll={checkScrollPosition}
+      >
         {displayLoading ? (
           <div className="flex justify-center p-4">
             <p className="text-gray-500">Загрузка сообщений...</p>
@@ -288,6 +344,21 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
           </>
         )}
         <div ref={messagesEndRef} />
+        
+        {/* New Messages Indicator */}
+        {unreadCount > 0 && (
+          <div className="fixed bottom-24 right-4">
+            <button
+              onClick={scrollToBottom}
+              className="bg-black text-white rounded-full p-3 shadow-lg hover:bg-gray-800 transition-colors flex items-center justify-center w-12 h-12 relative"
+            >
+              <ArrowDown size={24} />
+              <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {unreadCount}
+              </div>
+            </button>
+          </div>
+        )}
       </div>
       
       {/* Message Input */}
