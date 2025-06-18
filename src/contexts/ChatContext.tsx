@@ -11,7 +11,7 @@ interface ChatContextType {
   unreadCount: number;
   shouldAutoScroll: boolean;
   setShouldAutoScroll: (value: boolean) => void;
-  selectChat: (chatId: number) => Promise<void>;
+  selectChat: (chatId: number | null) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   refreshChats: () => Promise<void>;
   markChatAsRead: (chatId: number) => Promise<void>;
@@ -221,11 +221,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchStats();
   }, [fetchStats]);
 
-  const selectChat = useCallback(async (chatId: number) => {
+  const selectChat = useCallback(async (chatId: number | null) => {
     if (isSelectingChat.current) return;
     
     try {
       isSelectingChat.current = true;
+      
+      if (chatId === null) {
+        // Clear the selected chat and messages
+        setSelectedChat(null);
+        setMessages([]);
+        return;
+      }
       
       // First, find the chat in our current list
       let chat = chats.find(c => c.id === chatId);
