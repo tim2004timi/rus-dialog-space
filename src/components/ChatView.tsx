@@ -18,6 +18,11 @@ import {
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useChat } from '@/contexts/ChatContext';
 import { ChatTags } from '@/components/ChatTags';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent
+} from "@/components/ui/dialog";
 
 interface ChatViewProps {
   chatId: number | null;
@@ -434,6 +439,11 @@ interface MessageBubbleProps {
 const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
   const isQuestion = message.message_type === 'question';
   const imageRef = useRef<HTMLImageElement>(null);
+  const [open, setOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (message.is_image && imageRef.current) {
@@ -446,7 +456,31 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
       };
     }
   }, [message.is_image]);
-  
+
+  // Handlers for zoom and pan
+  const handleWheel = (e: React.WheelEvent<HTMLImageElement>) => {
+    e.preventDefault();
+    setZoom((z) => Math.max(0.5, Math.min(5, z - e.deltaY * 0.001)));
+  };
+  const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
+    setDragging(true);
+    setStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+  };
+  const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!dragging || !start) return;
+    setOffset({ x: e.clientX - start.x, y: e.clientY - start.y });
+  };
+  const handleMouseUp = () => setDragging(false);
+  const handleDialogOpenChange = (o: boolean) => {
+    setOpen(o);
+    if (!o) {
+      setZoom(1);
+      setOffset({ x: 0, y: 0 });
+      setDragging(false);
+      setStart(null);
+    }
+  };
+
   return (
     <div className={`mb-4 flex ${isQuestion ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
@@ -460,15 +494,70 @@ const MessageBubble = ({ message, formatTime }: MessageBubbleProps) => {
           )}
         </div>
         {message.is_image ? (
-          <img 
-            ref={imageRef}
-            src={message.message} 
-            alt="Uploaded image" 
-            className="max-w-full rounded-lg"
-            style={{ maxHeight: '300px' }}
-          />
+          <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+            <DialogTrigger asChild>
+              <img
+                ref={imageRef}
+                src={message.message}
+                alt="Uploaded image"
+                className="max-w-full rounded-lg cursor-zoom-in"
+                style={{ maxHeight: '300px' }}
+                onClick={() => setOpen(true)}
+              />
+            </DialogTrigger>
+            <DialogContent className="flex items-center justify-center bg-black">
+              <div
+                style={{
+                  overflow: 'hidden',
+                  width: '100%',
+                  height: '80vh',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'black',
+                  cursor: dragging ? 'grabbing' : 'grab',
+                }}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+              >
+                <img
+                  src={message.message}
+                  alt="Zoomed image"
+                  style={{
+                    transform: `scale(${zoom}) translate(${offset.x / zoom}px, ${offset.y / zoom}px)`,
+                    transition: dragging ? 'none' : 'transform 0.2s',
+                    maxWidth: '100%',
+                    maxHeight: '80vh',
+                    userSelect: 'none',
+                    pointerEvents: 'auto',
+                  }}
+                  onWheel={handleWheel}
+                  onMouseDown={handleMouseDown}
+                  draggable={false}
+                />
+              </div>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/60 rounded px-3 py-1">
+                <button
+                  className="text-white text-lg px-2"
+                  onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}
+                  type="button"
+                >
+                  -
+                </button>
+                <span className="text-white">{Math.round(zoom * 100)}%</span>
+                <button
+                  className="text-white text-lg px-2"
+                  onClick={() => setZoom((z) => Math.min(5, z + 0.2))}
+                  type="button"
+                >
+                  +
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
         ) : (
-        <p className="whitespace-pre-wrap break-words">{message.message}</p>
+          <p className="whitespace-pre-wrap break-words">{message.message}</p>
         )}
         <div className="text-right mt-1">
           <span className={`text-xs ${isQuestion ? 'text-gray-500' : 'text-gray-300'}`}>
