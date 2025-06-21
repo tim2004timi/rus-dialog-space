@@ -44,8 +44,14 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
     }
   }, [chats, validChatIds, selectedChat, onSelectChat]);
 
-  const waitingChats = filteredChats.filter(chat => chat.waiting);
-  const regularChats = filteredChats.filter(chat => !chat.waiting);
+  // Sort chats: waiting (unread) at top by lastMessageTime desc, then read by lastMessageTime desc
+  const waitingChats = filteredChats
+    .filter(chat => chat.waiting)
+    .sort((a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime());
+
+  const regularChats = filteredChats
+    .filter(chat => !chat.waiting)
+    .sort((a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime());
 
   console.log('Sidebar filtered counts:', {
     all: chats.length,
