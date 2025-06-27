@@ -32,7 +32,16 @@ const ChatStats = () => {
 
   useEffect(() => {
     if (!lastUpdate) return;
-    fetchStats();
+    if (lastUpdate.type === 'stats_update' && typeof lastUpdate.total === 'number') {
+      setStats({
+        total: lastUpdate.total,
+        pending: lastUpdate.pending,
+        ai: lastUpdate.ai
+      });
+      setLoading(false);
+    } else {
+      fetchStats();
+    }
   }, [lastUpdate]);
 
   return (

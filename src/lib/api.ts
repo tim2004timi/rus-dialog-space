@@ -275,7 +275,7 @@ export const getAiContext = async (): Promise<{ system_message: string, faqs: st
     }
     const data = await response.json();
     return {
-      system_message: data["system_message "] || '',
+      system_message: data["system_message"] || '',
       faqs: data.faqs || ''
     };
   } catch (error) {
