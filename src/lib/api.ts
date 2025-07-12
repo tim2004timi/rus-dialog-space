@@ -3,6 +3,20 @@ import { config } from '@/config';
 
 export const API_URL = config.apiUrl;
 
+// Функция для получения заголовков с токеном
+const getAuthHeaders = () => {
+  const accessToken = localStorage.getItem('access_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  
+  return headers;
+};
+
 // Types
 export interface Chat {
   id: number;
@@ -30,7 +44,9 @@ export interface Message {
 // Get all chats
 export const getChats = async (): Promise<Chat[]> => {
   try {
-    const response = await fetch(`${API_URL}/chats`);
+    const response = await fetch(`${API_URL}/chats`, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch chats');
     }
@@ -57,7 +73,9 @@ export const getChats = async (): Promise<Chat[]> => {
 // Get messages for a specific chat
 export const getChatMessages = async (chatId: number | string): Promise<Message[]> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/messages`);
+    const response = await fetch(`${API_URL}/chats/${chatId}/messages`, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch messages');
     }
@@ -83,9 +101,7 @@ export const sendMessage = async (chatId: number, message: string, isAi: boolean
   try {
     const response = await fetch(`${API_URL}/messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         chat_id: chatId,
         message,
@@ -103,9 +119,7 @@ export const sendMessage = async (chatId: number, message: string, isAi: boolean
     // Update chat waiting status
     await fetch(`${API_URL}/chats/${chatId}/waiting`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ waiting: false }),
     });
     
@@ -132,9 +146,7 @@ export const toggleAiChat = async (chatId: number, aiEnabled: boolean): Promise<
     
     const response = await fetch(`${API_URL}/chats/${chatId}/ai`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ ai: aiEnabled }),
     });
     
@@ -170,9 +182,7 @@ export const markChatAsRead = async (chatId: number): Promise<void> => {
     
     const response = await fetch(`${API_URL}/chats/${chatId}/waiting`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ waiting: false }),
     });
     
@@ -192,7 +202,9 @@ export const markChatAsRead = async (chatId: number): Promise<void> => {
 // Get chat statistics
 export const getChatStats = async (): Promise<{ total: number, pending: number, ai: number }> => {
   try {
-    const response = await fetch(`${API_URL}/stats`);
+    const response = await fetch(`${API_URL}/stats`, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch stats');
     }
@@ -208,6 +220,7 @@ export const deleteChat = async (chatId: number | string): Promise<void> => {
   try {
     const response = await fetch(`${API_URL}/chats/${chatId}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
     
     if (!response.ok) {
@@ -227,9 +240,7 @@ export const addChatTag = async (chatId: number, tag: string): Promise<{ success
   try {
     const response = await fetch(`${API_URL}/chats/${chatId}/tags`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ tag }),
     });
     
@@ -249,8 +260,9 @@ export const addChatTag = async (chatId: number, tag: string): Promise<{ success
 // Remove tag from chat
 export const removeChatTag = async (chatId: number, tag: string): Promise<{ success: boolean; tags: string[] }> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/tags/${encodeURIComponent(tag)}`, {
+    const response = await fetch(`${API_URL}/chats/${chatId}/tags/${tag}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
     
     if (!response.ok) {
@@ -269,7 +281,9 @@ export const removeChatTag = async (chatId: number, tag: string): Promise<{ succ
 // Get AI context
 export const getAiContext = async (): Promise<{ system_message: string, faqs: string }> => {
   try {
-    const response = await fetch(`${API_URL}/ai/context`);
+    const response = await fetch(`${API_URL}/ai/context`, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch AI context');
     }
@@ -290,9 +304,7 @@ export const putAiContext = async (system_message: string, faqs: string): Promis
   try {
     const response = await fetch(`${API_URL}/ai/context`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ 
         system_message,
         faqs
