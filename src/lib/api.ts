@@ -57,10 +57,22 @@ export const getChats = async (): Promise<Chat[]> => {
     const response = await fetch(`${API_URL}/chats`, {
       headers: getAuthHeaders(),
     });
+    
+    console.log('📡 GET /chats - Статус ответа:', response.status, response.statusText);
+    
     if (!response.ok) {
-      throw new Error('Failed to fetch chats');
+      const errorText = await response.text();
+      console.error('❌ Ошибка GET /chats:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorText
+      });
+      throw new Error(`Failed to fetch chats: ${response.status} ${response.statusText}`);
     }
+    
     const chats = await response.json();
+    console.log('✅ GET /chats - Успешно получено чатов:', chats.length);
+    
     return chats.map((chat: any) => ({
           id: chat.id,
           uuid: chat.uuid,
@@ -215,10 +227,23 @@ export const getChatStats = async (): Promise<{ total: number, pending: number, 
     const response = await fetch(`${API_URL}/stats`, {
       headers: getAuthHeaders(),
     });
+    
+    console.log('📡 GET /stats - Статус ответа:', response.status, response.statusText);
+    
     if (!response.ok) {
-      throw new Error('Failed to fetch stats');
+      const errorText = await response.text();
+      console.error('❌ Ошибка GET /stats:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorText
+      });
+      throw new Error(`Failed to fetch stats: ${response.status} ${response.statusText}`);
     }
-    return await response.json();
+    
+    const stats = await response.json();
+    console.log('✅ GET /stats - Успешно получена статистика:', stats);
+    
+    return stats;
   } catch (error) {
     console.error('Error fetching chat statistics:', error);
     return { total: 0, pending: 0, ai: 0 };
