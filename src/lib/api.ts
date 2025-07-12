@@ -10,10 +10,20 @@ const getAuthHeaders = () => {
     'Content-Type': 'application/json',
   };
   
+  console.log('🔑 Формирование заголовков для API запроса:', {
+    hasAccessToken: !!accessToken,
+    accessTokenLength: accessToken?.length,
+    accessTokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : null
+  });
+  
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+    console.log('✅ Authorization заголовок добавлен');
+  } else {
+    console.log('⚠️ Access token не найден в localStorage');
   }
   
+  console.log('📤 Финальные заголовки:', headers);
   return headers;
 };
 

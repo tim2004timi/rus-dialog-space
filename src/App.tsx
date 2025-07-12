@@ -29,9 +29,29 @@ const App = () => {
     const accessToken = params.get("access_token");
     const refreshToken = params.get("refresh_token");
 
+    console.log('🔍 Проверка токенов в URL:', {
+      accessToken: accessToken ? `${accessToken.substring(0, 20)}...` : null,
+      refreshToken: refreshToken ? `${refreshToken.substring(0, 20)}...` : null,
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken
+    });
+
     if (accessToken && refreshToken) {
+      console.log('💾 Сохранение токенов в localStorage...');
+      
       localStorage.setItem("access_token", accessToken);
       localStorage.setItem("refresh_token", refreshToken);
+      
+      // Проверяем, что токены действительно сохранились
+      const savedAccessToken = localStorage.getItem("access_token");
+      const savedRefreshToken = localStorage.getItem("refresh_token");
+      
+      console.log('✅ Токены сохранены в localStorage:', {
+        accessTokenSaved: !!savedAccessToken,
+        refreshTokenSaved: !!savedRefreshToken,
+        accessTokenLength: savedAccessToken?.length,
+        refreshTokenLength: savedRefreshToken?.length
+      });
 
       // Удалить токены из URL
       params.delete("access_token");
@@ -40,6 +60,10 @@ const App = () => {
         window.location.pathname +
         (params.toString() ? "?" + params.toString() : "");
       window.history.replaceState({}, document.title, newUrl);
+      
+      console.log('🧹 Токены удалены из URL, новый URL:', newUrl);
+    } else {
+      console.log('⚠️ Токены не найдены в URL или отсутствуют');
     }
   }, []);
 
