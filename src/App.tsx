@@ -26,8 +26,8 @@ const App = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
+    const accessToken = params.get("access");
+    const refreshToken = params.get("refresh");
 
     console.log('🔍 Проверка токенов в URL:', {
       accessToken: accessToken ? `${accessToken.substring(0, 20)}...` : null,
@@ -54,8 +54,8 @@ const App = () => {
       });
 
       // Удалить токены из URL
-      params.delete("access_token");
-      params.delete("refresh_token");
+      params.delete("access");
+      params.delete("refresh");
       const newUrl =
         window.location.pathname +
         (params.toString() ? "?" + params.toString() : "");
