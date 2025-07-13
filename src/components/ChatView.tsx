@@ -76,18 +76,7 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
     setError(null);
     try {
       // Fetch chat info directly if chatId is available
-      const accessToken = localStorage.getItem('access_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-      
-      const response = await fetch(`${API_URL}/chats/${chatId}`, {
-        headers,
-      });
+      const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}`);
       if (!response.ok) {
         const errorData = await response.json();
         setError(errorData.detail || 'Чат не найден или недоступен.');
@@ -249,16 +238,8 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       formData.append('image', file);
       formData.append('chat_id', selectedChat.id.toString());
 
-      const accessToken = localStorage.getItem('access_token');
-      const headers: Record<string, string> = {};
-      
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch(`${API_URL}/messages/image`, {
+      const response = await fetchWithTokenRefresh(`${API_URL}/messages/image`, {
         method: 'POST',
-        headers,
         body: formData,
       });
 

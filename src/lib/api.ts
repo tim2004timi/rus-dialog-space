@@ -3,6 +3,98 @@ import { config } from '@/config';
 
 export const API_URL = config.apiUrl;
 
+// Функция для обновления токена
+const refreshAccessToken = async (): Promise<boolean> => {
+  try {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      console.log('❌ Refresh token не найден в localStorage');
+      return false;
+    }
+
+    console.log('🔄 Обновление access token...');
+    
+    const response = await fetch(`${API_URL}/auth/refresh-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        refresh_token: refreshToken
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ Ошибка обновления токена:', response.status, response.statusText);
+      return false;
+    }
+
+    const data = await response.json();
+    console.log('✅ Токен успешно обновлен');
+    
+    // Сохраняем новый access token
+    localStorage.setItem('access_token', data.access_token);
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Ошибка при обновлении токена:', error);
+    return false;
+  }
+};
+
+// Функция для выполнения запроса с автоматическим обновлением токена
+export const fetchWithTokenRefresh = async (
+  url: string, 
+  options: RequestInit = {}
+): Promise<Response> => {
+  // Добавляем токен к запросу
+  const accessToken = localStorage.getItem('access_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const requestOptions = {
+    ...options,
+    headers,
+  };
+
+  // Выполняем первый запрос
+  let response = await fetch(url, requestOptions);
+
+  // Если получили 401, пробуем обновить токен и повторить запрос
+  if (response.status === 401) {
+    console.log('🔄 Получен 401, пробуем обновить токен...');
+    
+    const tokenRefreshed = await refreshAccessToken();
+    
+    if (tokenRefreshed) {
+      // Повторяем запрос с новым токеном
+      const newAccessToken = localStorage.getItem('access_token');
+      if (newAccessToken) {
+        headers['Authorization'] = `Bearer ${newAccessToken}`;
+        const retryOptions = {
+          ...options,
+          headers,
+        };
+        
+        console.log('🔄 Повторяем запрос с новым токеном...');
+        response = await fetch(url, retryOptions);
+      }
+    } else {
+      console.log('❌ Не удалось обновить токен, перенаправляем на логин');
+      // Можно добавить логику перенаправления на страницу логина
+      // window.location.href = '/login';
+    }
+  }
+
+  return response;
+};
+
 // Функция для получения заголовков с токеном
 const getAuthHeaders = () => {
   const accessToken = localStorage.getItem('access_token');
@@ -54,9 +146,7 @@ export interface Message {
 // Get all chats
 export const getChats = async (): Promise<Chat[]> => {
   try {
-    const response = await fetch(`${API_URL}/chats`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats`);
     
     console.log('📡 GET /chats - Статус ответа:', response.status, response.statusText);
     
@@ -95,9 +185,7 @@ export const getChats = async (): Promise<Chat[]> => {
 // Get messages for a specific chat
 export const getChatMessages = async (chatId: number | string): Promise<Message[]> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/messages`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/messages`);
     if (!response.ok) {
       throw new Error('Failed to fetch messages');
     }
@@ -121,7 +209,7 @@ export const getChatMessages = async (chatId: number | string): Promise<Message[
 // Send a new message
 export const sendMessage = async (chatId: number, message: string, isAi: boolean): Promise<Message> => {
   try {
-    const response = await fetch(`${API_URL}/messages`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/messages`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -139,7 +227,7 @@ export const sendMessage = async (chatId: number, message: string, isAi: boolean
     const newMessage = await response.json();
     
     // Update chat waiting status
-    await fetch(`${API_URL}/chats/${chatId}/waiting`, {
+    await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/waiting`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ waiting: false }),
@@ -166,7 +254,7 @@ export const toggleAiChat = async (chatId: number, aiEnabled: boolean): Promise<
   try {
     console.log('Toggling AI status:', { chatId, aiEnabled });
     
-    const response = await fetch(`${API_URL}/chats/${chatId}/ai`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/ai`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ ai: aiEnabled }),
@@ -202,7 +290,7 @@ export const markChatAsRead = async (chatId: number): Promise<void> => {
   try {
     console.log('Marking chat as read:', chatId);
     
-    const response = await fetch(`${API_URL}/chats/${chatId}/waiting`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/waiting`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ waiting: false }),
@@ -224,9 +312,7 @@ export const markChatAsRead = async (chatId: number): Promise<void> => {
 // Get chat statistics
 export const getChatStats = async (): Promise<{ total: number, pending: number, ai: number }> => {
   try {
-    const response = await fetch(`${API_URL}/stats`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithTokenRefresh(`${API_URL}/stats`);
     
     console.log('📡 GET /stats - Статус ответа:', response.status, response.statusText);
     
@@ -253,7 +339,7 @@ export const getChatStats = async (): Promise<{ total: number, pending: number, 
 // Delete a chat
 export const deleteChat = async (chatId: number | string): Promise<void> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -273,7 +359,7 @@ export const deleteChat = async (chatId: number | string): Promise<void> => {
 // Add tag to chat
 export const addChatTag = async (chatId: number, tag: string): Promise<{ success: boolean; tags: string[] }> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/tags`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/tags`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ tag }),
@@ -295,7 +381,7 @@ export const addChatTag = async (chatId: number, tag: string): Promise<{ success
 // Remove tag from chat
 export const removeChatTag = async (chatId: number, tag: string): Promise<{ success: boolean; tags: string[] }> => {
   try {
-    const response = await fetch(`${API_URL}/chats/${chatId}/tags/${tag}`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/tags/${tag}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -316,9 +402,7 @@ export const removeChatTag = async (chatId: number, tag: string): Promise<{ succ
 // Get AI context
 export const getAiContext = async (): Promise<{ system_message: string, faqs: string }> => {
   try {
-    const response = await fetch(`${API_URL}/ai/context`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithTokenRefresh(`${API_URL}/ai/context`);
     if (!response.ok) {
       throw new Error('Failed to fetch AI context');
     }
@@ -337,7 +421,7 @@ export const getAiContext = async (): Promise<{ system_message: string, faqs: st
 // Put AI context
 export const putAiContext = async (system_message: string, faqs: string): Promise<{ system_message: string, faqs: string }> => {
   try {
-    const response = await fetch(`${API_URL}/ai/context`, {
+    const response = await fetchWithTokenRefresh(`${API_URL}/ai/context`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ 

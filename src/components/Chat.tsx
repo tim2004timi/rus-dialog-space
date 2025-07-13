@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { Message } from '../types';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchWithTokenRefresh } from '../lib/api';
 
 interface ChatProps {
   chatId: string;
@@ -22,19 +22,7 @@ export const Chat: React.FC<ChatProps> = ({ chatId }) => {
     
     try {
       setIsLoading(true);
-      
-      const accessToken = localStorage.getItem('access_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-      
-      const response = await fetch(`${API_URL}/chats/${chatId}/messages?page=${pageNum}&limit=50`, {
-        headers,
-      });
+      const response = await fetchWithTokenRefresh(`${API_URL}/chats/${chatId}/messages?page=${pageNum}&limit=50`);
       if (!response.ok) {
         throw new Error('Failed to load messages');
       }
