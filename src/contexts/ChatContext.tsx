@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { Chat, Message, getChats, getChatMessages, sendMessage as apiSendMessage, markChatAsRead as apiMarkChatAsRead, getChatStats } from '@/lib/api';
 import { useWebSocket } from './WebSocketContext';
-import { useAuth } from './AuthContext';
 import type { WebSocketMessage } from '@/types';
 
 interface ChatContextType {
@@ -39,7 +38,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [unreadCount, setUnreadCount] = useState(0);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const { lastMessage, sendMessage: wsSendMessage, lastUpdate } = useWebSocket();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const isSelectingChat = useRef(false);
   const selectedChatRef = useRef<Chat | null>(null);
   const [stats, setStats] = useState<{ total: number; pending: number; ai: number }>({ total: 0, pending: 0, ai: 0 });
@@ -50,12 +48,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [selectedChat]);
 
   const refreshChats = useCallback(async () => {
-    // Не выполняем запросы, пока не загрузятся токены
-    if (authLoading || !isAuthenticated) {
-      console.log('⏳ Ожидание загрузки токенов...');
-      return;
-    }
-
     try {
       setLoading(true);
       const chatData = await getChats();
@@ -76,22 +68,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  }, [authLoading, isAuthenticated]);
+  }, []);
 
-  // Initial load - дожидаемся загрузки токенов
+  // Initial load
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      refreshChats();
-    }
-  }, [refreshChats, authLoading, isAuthenticated]);
+    refreshChats();
+  }, [refreshChats]);
 
   // Получение статистики
   const fetchStats = useCallback(async () => {
-    // Не выполняем запросы, пока не загрузятся токены
-    if (authLoading || !isAuthenticated) {
-      return;
-    }
-
     const now = Date.now();
     // Обновляем статистику не чаще чем раз в 2 секунды
     if (now - lastStatsUpdate.current < 2000) {
@@ -104,7 +89,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
-  }, [authLoading, isAuthenticated]);
+  }, []);
 
   // Handle WebSocket messages from lastMessage stream
   useEffect(() => {

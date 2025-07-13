@@ -5,44 +5,17 @@ import ChatSidebar from '@/components/ChatSidebar';
 import ChatView from '@/components/ChatView';
 import ChatStats from '@/components/ChatStats';
 import { useChat } from '@/contexts/ChatContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
   // Получаем selectChat и selectedChat из контекста
   const { selectedChat, selectChat } = useChat();
-  const { isLoading: authLoading, isAuthenticated } = useAuth();
 
   const handleChatDeleted = () => {
     // При удалении чата, сбрасываем selectedChat в контексте
     selectChat(null); //selectChat теперь принимает null для сброса выбранного чата
   };
-
-  // Показываем загрузку, пока не загрузятся токены
-  if (authLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-6">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-600">Загрузка...</h3>
-          <p className="text-gray-500">Проверка аутентификации</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Если пользователь не аутентифицирован, показываем сообщение
-  if (!isAuthenticated) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-6">
-          <h3 className="text-xl font-medium text-red-600 mb-2">Доступ запрещен</h3>
-          <p className="text-gray-500">Для доступа к приложению необходима аутентификация</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-screen flex flex-col">
