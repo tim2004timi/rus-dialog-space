@@ -57,8 +57,6 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   // Track the last message timestamp we've seen
   const lastSeenMessageRef = useRef<string>('');
 
-  console.log('ChatView rendering with chatId:', chatId, 'messages from context:', messages.length);
-
   // Format timestamp for display
   const formatMessageTime = (timestamp: string) => {
     if (!timestamp) return '';
@@ -99,7 +97,6 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
   }, [chatId]);
 
   useEffect(() => {
-    console.log('ChatView effect: chatId changed to', chatId);
     // When chatId changes, fetch chat info and messages
     if (chatId) {
       fetchChatInfo();
@@ -121,14 +118,12 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
 
       // Set interval for subsequent calls
       intervalId = setInterval(() => {
-        console.log(`Marking chat ${chatId} as read periodically...`);
         markChatAsReadFromContext(chatId);
       }, 3000); // Send every 3 seconds
     }
 
     // Cleanup function to clear interval
     return () => {
-      console.log(`Clearing interval for chat ${chatId}`);
       if (intervalId !== null) {
         clearInterval(intervalId);
       }

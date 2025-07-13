@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Chat, getChats } from '@/lib/api';
 import { CircleDot, MessageSquare, Send, Search } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
@@ -14,14 +14,12 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
   const { chats, loading, unreadCount, selectedChat } = useChat();
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Log chats every render
-  console.log('Sidebar render. Chats count:', chats.length);
-
-  // Filter chats based on search query and validChatIds
+  // Filter chats based on search query
   const filteredChats = chats.filter(chat => {
-    const matchesSearch = chat.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         chat.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         chat.tags?.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = !searchQuery || 
+      chat.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      chat.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      chat.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const isValidId = validChatIds ? typeof chat.id === 'number' && !isNaN(chat.id) && chat.id !== null && chat.id !== undefined && validChatIds.includes(chat.id) : true;
 
@@ -38,7 +36,6 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
       // If we have new chat IDs that aren't in validChatIds, update the parent
       const hasNewChats = newChatIds.some(id => validChatIds && !validChatIds.includes(id));
       if (hasNewChats) {
-        console.log('Sidebar: New chat IDs detected, updating parent.');
         onSelectChat(selectedChat?.id || null); // Pass null if selectedChat is null
       }
     }
@@ -52,13 +49,6 @@ const ChatSidebar = ({ onSelectChat, validChatIds }: ChatSidebarProps) => {
   const regularChats = filteredChats
     .filter(chat => !chat.waiting)
     .sort((a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime());
-
-  console.log('Sidebar filtered counts:', {
-    all: chats.length,
-    valid: filteredChats.length,
-    waiting: waitingChats.length,
-    regular: regularChats.length,
-  });
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
@@ -143,8 +133,7 @@ interface ChatPreviewProps {
   onClick: () => void;
 }
 
-const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
-  console.log('Rendering ChatPreview for chat:', chat);
+const ChatPreview = React.memo(({ chat, isSelected, onClick }: ChatPreviewProps) => {
   const truncateMessage = (message: string | undefined, maxLength: number = 30) => {
     if (!message) return 'Нет сообщений';
     return message.length > maxLength ? message.substring(0, maxLength) + '...' : message;
@@ -219,6 +208,6 @@ const ChatPreview = ({ chat, isSelected, onClick }: ChatPreviewProps) => {
       </div>
     </div>
   );
-};
+});
 
 export default ChatSidebar;
