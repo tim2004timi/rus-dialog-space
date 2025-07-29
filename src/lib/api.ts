@@ -47,10 +47,17 @@ export const fetchWithTokenRefresh = async (
 ): Promise<Response> => {
   // Добавляем токен к запросу
   const accessToken = localStorage.getItem('access_token');
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
+  const headers: Record<string, string> = {};
+  
+  // Не устанавливаем Content-Type для FormData, браузер сам установит правильный
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  // Добавляем остальные заголовки из options
+  if (options.headers) {
+    Object.assign(headers, options.headers);
+  }
   
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;

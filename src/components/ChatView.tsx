@@ -233,16 +233,29 @@ const ChatView = ({ chatId, onChatDeleted }: ChatViewProps) => {
       formData.append('image', file);
       formData.append('chat_id', selectedChat.id.toString());
 
+      console.log('📤 Отправка изображения:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        chatId: selectedChat.id,
+        formDataEntries: Array.from(formData.entries())
+      });
+
       const response = await fetchWithTokenRefresh(`${API_URL}/messages/image`, {
         method: 'POST',
         body: formData,
       });
 
+      console.log('📥 Ответ сервера:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error('Failed to upload image');
+        const errorText = await response.text();
+        console.error('❌ Ошибка загрузки изображения:', errorText);
+        throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('✅ Изображение успешно загружено:', data);
       setNewMessage('');
       toast.success('Изображение отправлено');
     } catch (error) {
